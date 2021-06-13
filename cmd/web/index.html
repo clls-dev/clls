@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en" style="height: 100%; padding: 0; margin: 0; box-sizing: border-box;">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>clls demo</title>
+    <script src="wasm_exec.js"></script>
+    <style>
+        * {
+            padding: 0;
+            margin: 0;
+            box-sizing: border-box;
+            background-color: rgb(24, 26, 27);
+            color: rgb(255, 255, 255);
+            font-family: 'Courier New', Courier, monospace;
+            font-size: small;
+        }
+    </style>
+</head>
+
+<body style="height: 100%;">
+    <section style="padding: 0.5em; font-size: medium; line-height: 1.5em;">
+        Examples: <span id="examples">loading..</span>
+        <br />
+        Donate to help me build an awesome chialisp <a href="https://microsoft.github.io/language-server-protocol/"
+            target="_blank">language server</a>:
+        xch17hh3c0kjtrrkvnjsvqu3m2wm94yavztdpdr3g8y9gncsv3t9pz2qckyfvx
+        <br />
+        This page uses a <a href="https://webassembly.org/" target="_blank">WebAssembly</a> build of the language server
+        prototype that
+        I
+        wrote in <a href="https://golang.org/" target="_blank">go</a>. Soon open-source and open to contributions 😉
+    </section>
+    <div style="display: flex; width: 100%;">
+        <textarea style="white-space:pre; width: 50%; padding: 0.5em; overflow-x: scroll; resize: none;"
+            id="intext"></textarea>
+        <div style="width: 50%; padding: 0.5em; white-space:pre; overflow-x: scroll;" id="main"></div>
+    </div>
+    <script>
+        function insertColor(input, c, index, len) {
+            return input.substr(0, index) +
+                '<span style="color: ' + c + '">' +
+                input.substr(index, len) +
+                "</span>" +
+                input.substr(index + len)
+        }
+
+
+
+        function color(mod, input) {
+            const inserts = []
+
+            const defColor = "rgb(125, 125, 255)"
+            const constColor = "rgb(185, 185, 255)"
+            const keywordColor = "rgb(200, 0, 200)"
+            const funcColor = "rgb(255, 255, 65)"
+            const builtinColor = "rgb(255, 255, 145)"
+            const argColor = "rgb(144, 238, 144)"
+            const templateColor = "rgb(255, 165, 0)"
+            const commentColor = "rgb(206, 208, 210)"
+            const literalColor = "rgb(201, 139, 50)"
+
+
+            function colorParams(a) {
+                if (a.Token && a.Token.Value != ".") {
+                    inserts.push({ color: argColor, start: a.Token.Index, len: a.Token.Text.length })
+                }
+                if (a.Children && a.Children.length > 0) {
+                    for (const ac of a.Children) {
+                        colorParams(ac)
+                    }
+                }
+            }
+
+            if (mod.IsMod) {
+                inserts.push({ color: keywordColor, start: mod.ModToken.Index, len: mod.ModToken.Text.length })
+                if (mod.Args) {
+                    colorParams(mod.Args)
+                }
+            }
+
+            if (mod.Constants) {
+                for (const c of mod.Constants) {
+                    inserts.push({ color: defColor, start: c.Token.Index, len: c.Token.Text.length })
+                    inserts.push({ color: constColor, start: c.Name.Token.Index, len: c.Name.Token.Text.length })
+                    if (c.Value && c.Value.Token) {
+                        inserts.push({ color: literalColor, start: c.Value.Token.Index, len: c.Value.Token.Text.length })
+                    }
+                }
+            }
+
+            if (mod.Comments) {
+                for (const t of mod.Comments) {
+                    inserts.push({ color: commentColor, start: t.Index, len: t.Text.length })
+                }
+            }
+
+            if (mod.Includes) {
+                for (const incl of Object.values(mod.Includes)) {
+                    inserts.push({ color: keywordColor, start: incl.Token.Index, len: incl.Token.Text.length })
+                    if (incl.Value && incl.Value.Token) {
+                        inserts.push({ color: literalColor, start: incl.Value.Token.Index, len: incl.Value.Token.Text.length })
+                    }
+                }
+            }
+
+            function insertBody(node) {
+                if (node.Kind == 1) {
+                    if (node.Raw.Children && node.Raw.Children.length > 0) {
+                        inserts.push({ color: keywordColor, start: node.Raw.Children[0].Token.Index, len: node.Raw.Children[0].Token.Text.length })
+                    }
+                    insertBody(node.IfCond)
+                    insertBody(node.IfBranch)
+                    insertBody(node.ElseBranch)
+                    return
+                } else if (node.Kind == 3) {
+                    if (node.Raw.Children && node.Raw.Children.length > 0) {
+                        let col = funcColor
+                        if (node.Function.Builtin) {
+                            switch (node.Function.Name.Token.Value) {
+                                case "qq":
+                                case "unquote":
+                                    col = templateColor
+                                    break;
+                                case "x":
+                                    col = "red"
+                                    break;
+                                default:
+                                    col = builtinColor;
+                            }
+                        }
+                        inserts.push({ color: col, start: node.Raw.Children[0].Token.Index, len: node.Raw.Children[0].Token.Text.length })
+                    }
+                    if (node.CallArgs) {
+                        for (const a of node.CallArgs) {
+                            insertBody(a)
+                        }
+                    }
+                } else if (node.Kind == 7) {
+                    inserts.push({ color: constColor, start: node.Raw.Token.Index, len: node.Raw.Token.Text.length })
+                } else if (node.Kind == 8) {
+                    inserts.push({ color: argColor, start: node.Raw.Token.Index, len: node.Raw.Token.Text.length })
+                } else if (node.Kind == 9) {
+                    let c = funcColor
+                    if (node.Function.Builtin) {
+                        c = builtinColor;
+                    }
+                    inserts.push({ color: c, start: node.Raw.Token.Index, len: node.Raw.Token.Text.length })
+                } else {
+                    if (node.Raw.Token && node.Raw.Token.Value != ".") {
+                        inserts.push({ color: literalColor, start: node.Raw.Token.Index, len: node.Raw.Token.Text.length })
+                    }
+                    if (node.Children) {
+                        for (const child of node.Children) {
+                            insertBody(child)
+                        }
+                    }
+                }
+            }
+
+            if (mod.Functions && mod.Functions.length > 0) {
+                for (const f of mod.Functions) {
+                    inserts.push({ color: defColor, start: f.Raw.Children[0].Token.Index, len: f.Raw.Children[0].Token.Text.length })
+                    inserts.push({ color: funcColor, start: f.Name.Token.Index, len: f.Name.Token.Text.length })
+                    if (f.Params) {
+                        colorParams(f.Params)
+                    }
+                    insertBody(f.Body)
+                }
+            }
+
+            if (mod.Main) {
+                insertBody(mod.Main)
+            }
+
+            inserts.sort((a, b) => a.start - b.start)
+
+            const offset = '<span style="color: "></span>'.length
+            let to = 0
+            for (const ins of inserts) {
+                input = insertColor(input, ins.color, ins.start + to, ins.len)
+                to += offset + ins.color.length
+            }
+
+            return input
+        }
+
+        (async function amain() {
+            const go = new Go();
+            const buffer = await (await fetch("main.wasm")).arrayBuffer();
+            const result = await WebAssembly.instantiate(buffer, go.importObject);
+            go.run(result.instance)
+
+
+
+
+            let running = false
+            let rerun = true
+
+            async function update(input) {
+                if (running) {
+                    rerun = true
+                    return
+                }
+                running = true
+                const out = window.cllsInspect(input)
+                if (out) {
+                    if (typeof out == "object") {
+                        document.getElementById("main").innerHTML = color(out, input)
+                    } else if (typeof out == "string") {
+                        document.getElementById("main").innerHTML = out
+                    } else {
+                        console.log(out)
+                    }
+                }
+                running = false
+                if (rerun) {
+                    rerun = false
+                    const ine = document.getElementById("intext");
+                    update(ine.value)
+                }
+            }
+
+            const examples = window.cllsGetExamples()
+            document.getElementById("examples").innerHTML = '<select id="examples-select">' + Object.entries(examples).sort(([a], [b]) => a > b).reduce((result, [exampleName, exampleCode]) => {
+                return result + '"<option value="' + exampleName + '">' + exampleName + '</option>'
+            }, "") + "</select>"
+
+            document.getElementById("examples-select").value = "p2_delegated_puzzle_or_hidden_puzzle.clvm"
+            document.getElementById("intext").value = examples["p2_delegated_puzzle_or_hidden_puzzle.clvm"]
+            update(examples["p2_delegated_puzzle_or_hidden_puzzle.clvm"])
+
+            document.getElementById("examples-select").addEventListener("change", (e) => {
+                document.getElementById("intext").value = examples[e.target.value]
+                update(examples[e.target.value])
+            })
+            document.getElementById("intext").addEventListener("input", (e) => {
+                update(e.target.value)
+            })
+        })()
+    </script>
+</body>
+
+</html>

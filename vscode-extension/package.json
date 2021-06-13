@@ -1,0 +1,55 @@
+{
+	"name": "clls-vscode",
+	"description": "Chialisp language support",
+	"author": "Microsoft Corporation",
+	"license": "MIT",
+	"version": "1.0.2",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Microsoft/vscode-extension-samples"
+	},
+	"publisher": "clls-dev",
+	"categories": [],
+	"keywords": [
+		"multi-root ready"
+	],
+	"engines": {
+		"vscode": "^1.43.0"
+	},
+	"displayName": "Chialisp language server",
+	"activationEvents": [
+		"onLanguage:chialisp"
+	],
+	"main": "./client/out/extension",
+	"contributes": {
+		"languages": [
+			{
+				"id": "chialisp",
+				"extensions": [
+					".clvm"
+				]
+			}
+		],
+		"configurationDefaults": {
+			"[chialisp]": {
+				"editor.semanticHighlighting.enabled": true
+			}
+		}
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -b",
+		"watch": "tsc -b -w",
+		"postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
+		"test": "sh ./scripts/e2e.sh"
+	},
+	"devDependencies": {
+		"@types/mocha": "^8.2.2",
+		"@types/node": "^12.12.0",
+		"@typescript-eslint/eslint-plugin": "^4.23.0",
+		"@typescript-eslint/parser": "^4.23.0",
+		"eslint": "^7.26.0",
+		"mocha": "^8.3.2",
+		"typescript": "^4.2.3"
+	}
+}
