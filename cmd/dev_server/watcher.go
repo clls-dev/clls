@@ -48,7 +48,7 @@ func changeWatcher(p string) error {
 				if err := cmd.Run(); err != nil {
 					fmt.Println(err)
 				}
-				cmd = exec.Command("go", "build", "-o", filepath.Join(os.Getenv("HOME"), "go", "bin", "clls"), "./cmd/server")
+				cmd = exec.Command("go", "build", "-o", filepath.Join(os.Getenv("HOME"), "go", "bin", "clls"), "./cmd/clls")
 				fmt.Println("3) ", cmd)
 				cmd.Stderr = os.Stderr
 				cmd.Stdout = os.Stdout
