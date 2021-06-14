@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"strings"
 	"unicode"
 
 	"github.com/pkg/errors"
@@ -29,15 +28,27 @@ const (
 	quoteToken
 	commentToken
 	spaceToken
+	lineReturnToken
 )
 
-func tokenize(text string) (chan *Token, chan error) {
-	ch := make(chan *Token)
-	errCh := make(chan error)
+func tokenizeSync(text string) ([]*Token, error) {
+	tch, errptr := tokenize(text)
+	tokens := []*Token(nil)
+	for token := range tch {
+		tokens = append(tokens, token)
+	}
+	if *errptr != nil {
+		return nil, *errptr
+	}
+	return tokens, nil
+}
 
+func tokenize(text string) (_ chan *Token, errptr *error) {
+	err := error(nil)
+	errptr = &err
+	ch := make(chan *Token)
 	go func() {
 		defer close(ch)
-		defer close(errCh)
 		wordStart := -1
 		i := 0
 		lines := []int{0}
@@ -71,14 +82,12 @@ func tokenize(text string) (chan *Token, chan error) {
 		}
 		for i < len(text) {
 			c := text[i]
-			if c == ';' { // ignore comment
+			if c == ';' {
 				cutWord()
 				commentStart := i
-				commentEnd := strings.IndexRune(text[i+1:], '\n')
+				commentEnd := regexp.MustCompile(`\r?\n`).FindIndex([]byte(text[i:]))[0] + i
 				if commentEnd == -1 {
 					commentEnd = len(text)
-				} else {
-					commentEnd += i + 1
 				}
 				ch <- updateTokenLine(&Token{
 					Value: text[commentStart+1 : commentEnd],
@@ -100,19 +109,26 @@ func tokenize(text string) (chan *Token, chan error) {
 					Kind:  kind,
 				})
 				i++
+			} else if is := regexp.MustCompile(`^\r?\n`).Find([]byte(text[i:])); len(is) > 0 {
+				cutWord()
+				lines = append(lines, i+len(is))
+				ch <- updateTokenLine(&Token{
+					Value: text[i : i+len(is)],
+					Index: i,
+					Text:  text[i : i+len(is)],
+					Kind:  lineReturnToken,
+				})
+				i += len(is)
 			} else if unicode.IsSpace(rune(c)) {
 				cutWord()
 				spaceStart := i
-
 				nextNonSpace := i
 				for nextNonSpace < len(text) {
 					if !unicode.IsSpace(rune(text[nextNonSpace])) {
 						break
 					}
 					if is := regexp.MustCompile(`^\r?\n`).Find([]byte(text[nextNonSpace:])); len(is) > 0 {
-						nextNonSpace += len(is)
-						lines = append(lines, nextNonSpace)
-						continue
+						break
 					}
 					nextNonSpace++
 				}
@@ -153,7 +169,7 @@ func tokenize(text string) (chan *Token, chan error) {
 					j++
 				}
 				if j == len(text) {
-					errCh <- errors.New("unclosed quote")
+					*errptr = errors.New("unclosed quote")
 					return
 				}
 				i = j + 1
@@ -167,7 +183,7 @@ func tokenize(text string) (chan *Token, chan error) {
 		cutWord()
 	}()
 
-	return ch, errCh
+	return ch, errptr
 }
 
 var tokenKindNames = map[tokenKind]string{
@@ -177,6 +193,7 @@ var tokenKindNames = map[tokenKind]string{
 	quoteToken:       "quote",
 	commentToken:     "comment",
 	spaceToken:       "space",
+	lineReturnToken:  "line-return",
 }
 
 var tokenKindsByName = func() map[string]tokenKind {

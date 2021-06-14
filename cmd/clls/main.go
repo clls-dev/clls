@@ -19,6 +19,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const fileURIPrefix = "file://"
+
 func main() {
 	l := newLogger()
 	l.Info("Logger initialized")
@@ -70,6 +72,7 @@ func main() {
 								Legend: lsp.DefaultSemanticTokensLegend,
 								Full:   true,
 							},
+							DocumentFormattingProvider: true,
 						},
 					},
 				}
@@ -77,22 +80,87 @@ func main() {
 					return errors.Wrap(err, "reply to initialize")
 				}
 				l.Debug("responded to initialize", zap.Any("reply", reply))
+
 			case "textDocument/didOpen":
 				td := params["textDocument"].(map[string]interface{})
 				uriStr := td["uri"].(string)
 				contentStr := td["text"].(string)
 				docs[uriStr] = contentStr
+
 			case "textDocument/didChange":
 				td := params["textDocument"].(map[string]interface{})
 				uriStr := td["uri"].(string)
 				contentStr := params["contentChanges"].([]interface{})[0].(map[string]interface{})["text"].(string)
 				docs[uriStr] = contentStr
+
 			case "textDocument/didClose":
 				tdi := params["textDocument"].(map[string]interface{})
 				uriStr := tdi["uri"].(string)
 				delete(docs, uriStr)
+
+			case "textDocument/formatting":
+				uriStr := req.Params.(map[string]interface{})["textDocument"].(map[string]interface{})["uri"].(string)
+				l.Debug("textDocument/formatting " + uriStr)
+				if !strings.HasPrefix(uriStr, fileURIPrefix) {
+					if err := replyWithError(l, os.Stdout, req.ID, errors.New("textDocument.uri is not a file uri")); err != nil {
+						return errors.Wrap(err, "reply with error to textDocument/formatting")
+					}
+					continue
+				}
+				pathStr := strings.TrimPrefix(uriStr, fileURIPrefix)
+				l.Debug("parsed uri", zap.String("path", pathStr))
+				fileStr := ""
+				if s, ok := docs[uriStr]; ok {
+					fileStr = s
+				} else {
+					b, err := ioutil.ReadFile(pathStr)
+					if err != nil {
+						if err := replyWithError(l, os.Stdout, req.ID, errors.New("read file")); err != nil {
+							return errors.Wrap(err, "reply with error to textDocument/formatting")
+						}
+						continue
+					}
+					fileStr = string(b)
+				}
+
+				requestPayload, err := json.Marshal(req.Params)
+				if err != nil {
+					if err := replyWithError(l, os.Stdout, req.ID, errors.New("remarshal payload")); err != nil {
+						return errors.Wrap(err, "reply with error to textDocument/formatting")
+					}
+					continue
+				}
+				var formattingOptions lsp.FormattingOptions
+				if err := json.Unmarshal(requestPayload, &formattingOptions); err != nil {
+					if err := replyWithError(l, os.Stdout, req.ID, errors.New("unmarshal typed payload")); err != nil {
+						return errors.Wrap(err, "reply with error to textDocument/formatting")
+					}
+				}
+
+				newText, linesCount, err := clls.Prettify(l, &formattingOptions, fileStr)
+				if err != nil {
+					if err := replyWithError(l, os.Stdout, req.ID, errors.New("prettify file content")); err != nil {
+						return errors.Wrap(err, "reply with error to textDocument/formatting")
+					}
+					continue
+				}
+
+				reply := lsp.ResponseMessage{
+					Message: lsp.Message{Version: "2.0"},
+					ID:      req.ID,
+					Result: []lsp.TextEdit{{
+						Range: lsp.Range{
+							Start: lsp.Position{Line: 0, Character: 0},
+							End:   lsp.Position{Line: lsp.UInteger(linesCount + 1), Character: 0},
+						},
+						NewText: newText,
+					}},
+				}
+				if err := doReply(l, os.Stdout, &reply); err != nil {
+					return errors.Wrap(err, "reply to semantic tokens")
+				}
+
 			case "textDocument/semanticTokens/full":
-				const fileURIPrefix = "file://"
 				uriStr := req.Params.(map[string]interface{})["textDocument"].(map[string]interface{})["uri"].(string)
 				l.Debug("textDocument/semanticTokens/full " + uriStr)
 				if !strings.HasPrefix(uriStr, fileURIPrefix) {

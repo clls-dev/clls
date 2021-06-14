@@ -21,3 +21,4 @@ You need the `clls` program in your `$PATH`
 
 This Language Server works for .clvm files. It has the following language features:
 - Semantic tokens (syntax highlighting)
+- Formatting (very rough for now)

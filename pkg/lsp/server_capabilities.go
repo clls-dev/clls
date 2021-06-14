@@ -24,6 +24,16 @@ type ServerCapabilities struct {
 		The server provides completion support.
 	*/
 	CompletionProvider *CompletionOptions `json:"completionOptions,omitempty"`
+
+	/*
+		The server provides document formatting.
+
+		Type must be nil, bool or DocumentFormattingOptions
+	*/
+	DocumentFormattingProvider interface{} `json:"documentFormattingProvider,omitempty"`
+}
+
+type DocumentFormattingOptions struct {
 }
 
 type CompletionOptions struct {

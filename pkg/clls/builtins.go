@@ -6,7 +6,7 @@ var builtinFuncs = func() []*function {
 		"point_add", "c", "list",
 		"l", "sha256", "f", "r", "pubkey_for_exp", "a", "x",
 		"divmod", "substr", "concat", "logand", "qq", "unquote", "q",
-		"quote",
+		"quote", "i",
 	}
 	funcs := make([]*function, len(names))
 	for i, n := range names {

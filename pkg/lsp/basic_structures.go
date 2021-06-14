@@ -170,8 +170,8 @@ type Command struct {
 // TextEdit & AnnotatedTextEdit
 
 type TextEdit struct {
-	Range   Range
-	NewText string
+	Range   Range  `json:"range"`
+	NewText string `json:"newText"`
 }
 
 type ChangeAnnotation struct {

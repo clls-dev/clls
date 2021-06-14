@@ -97,29 +97,15 @@ func LoadCLVM(l *zap.Logger, p string, readFile func(string) (string, error)) (*
 		return nil, errors.Wrap(err, fmt.Sprintf("read file '%s'", p))
 	}
 
-	tch, ech := tokenize(f)
-
 	tokens := []*Token(nil)
+	tch, errptr := tokenize(f)
 	duptch := make(chan *Token)
-
-	dupech := make(chan error)
 	go func() {
-		defer close(dupech)
-		dupech <- func() error {
-			defer close(duptch)
-			for {
-				select {
-				case token, open := <-tch:
-					if !open {
-						return nil
-					}
-					duptch <- token
-					tokens = append(tokens, token)
-				case err := <-ech:
-					return err
-				}
-			}
-		}()
+		defer close(duptch)
+		for token := range tch {
+			duptch <- token
+			tokens = append(tokens, token)
+		}
 	}()
 
 	ast, err := parseAST(duptch)
@@ -127,8 +113,8 @@ func LoadCLVM(l *zap.Logger, p string, readFile func(string) (string, error)) (*
 		return nil, errors.Wrap(err, "parse syntax tree")
 	}
 
-	if err := <-dupech; err != nil {
-		return nil, errors.Wrap(err, fmt.Sprintf("tokenize file '%s'", p))
+	if *errptr != nil {
+		return nil, errors.Wrap(*errptr, fmt.Sprintf("tokenize file '%s'", p))
 	}
 
 	mods, err := parseModules(l, ast, readFile, tokens)

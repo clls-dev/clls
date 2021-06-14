@@ -4,6 +4,8 @@ type Integer = int64
 type UInteger = uint32
 type Decimal = float64
 
+type DocumentUri = string
+
 type IntegerOrString interface{}
 type IntegerOrNull interface{}
 type StringOrNull interface{}
