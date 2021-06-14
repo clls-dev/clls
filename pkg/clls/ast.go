@@ -10,9 +10,13 @@ type ASTNode struct {
 	CloseToken *Token
 }
 
-func parseAST(tokens []*Token) (*ASTNode, error) {
+func parseAST(tokch chan *Token) (*ASTNode, error) {
 	parents := []*ASTNode{{}} // start with empty root
-	for _, t := range tokens {
+	for {
+		t, ok := <-tokch
+		if !ok {
+			break
+		}
 		current := parents[len(parents)-1]
 		switch t.Kind {
 		case quoteToken, basicToken:
