@@ -388,7 +388,11 @@ func insertBody(inserts []insert, node *clls.CodeBody) []insert {
 	default:
 		if node.Token != nil && node.Token.Value != "." {
 			kind := "string"
-			if i := strings.IndexFunc(node.Token.Value, func(r rune) bool { return !unicode.IsNumber(r) }); i == -1 {
+			numberStr := node.Token.Value
+			if len(numberStr) > 0 && numberStr[0] == '-' {
+				numberStr = numberStr[1:]
+			}
+			if i := strings.IndexFunc(numberStr, func(r rune) bool { return !unicode.IsNumber(r) }); i == -1 {
 				kind = "number"
 			}
 			inserts = append(inserts, insert{Kind: kind, Token: node.Token})
