@@ -1,38 +1,23 @@
-# LSP Example
+# Chialisp language server
 
-Heavily documented sample code for https://code.visualstudio.com/api/language-extensions/language-server-extension-guide
+More info at github.com/clls-dev/clls
+
+## Requirements
+
+### clls
+
+You need the `clls` program in your `$PATH`
+- Install [go](https://golang.org/)
+- Put the go binaries in your path, for example
+  ```shell
+  export PATH="${PATH}:`go env GOPATH`/bin"
+  ```
+- Get clls, make sure you are not `cd`ed in a go module
+  ```shell
+  cd && go get -u github.com/clls-dev/clls/cmd/clls
+  ```
 
 ## Functionality
 
-This Language Server works for plain text file. It has the following language features:
-- Completions
-- Diagnostics regenerated on each file change or configuration change
-
-It also includes an End-to-End test.
-
-## Structure
-
-```
-.
-├── client // Language Client
-│   ├── src
-│   │   ├── test // End to End tests for Language Client / Server
-│   │   └── extension.ts // Language Client entry point
-├── package.json // The extension manifest.
-└── server // Language Server
-    └── src
-        └── server.ts // Language Server entry point
-```
-
-## Running the Sample
-
-- Run `npm install` in this folder. This installs all necessary npm modules in both the client and server folder
-- Open VS Code on this folder.
-- Press Ctrl+Shift+B to compile the client and server.
-- Switch to the Debug viewlet.
-- Select `Launch Client` from the drop down.
-- Run the launch config.
-- If you want to debug the server as well use the launch configuration `Attach to Server`
-- In the [Extension Development Host] instance of VSCode, open a document in 'plain text' language mode.
-  - Type `j` or `t` to see `Javascript` and `TypeScript` completion.
-  - Enter text content such as `AAA aaa BBB`. The extension will emit diagnostics for all words in all-uppercase.
+This Language Server works for .clvm files. It has the following language features:
+- Semantic tokens (syntax highlighting)
