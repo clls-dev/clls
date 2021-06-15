@@ -59,7 +59,7 @@ func inspect(a js.Value, b []js.Value) interface{} {
 
 	l := zap.NewNop()
 
-	mod, err := clls.LoadCLVMFromStrings(l, "main.clvm", sources)
+	mod, err := clls.LoadCLVMFromStrings(l, "main.clvm", "file://main.clvm", sources)
 	if err != nil {
 		return js.ValueOf(err.Error())
 	}

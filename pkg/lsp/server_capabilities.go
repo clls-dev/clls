@@ -31,6 +31,22 @@ type ServerCapabilities struct {
 		Type must be nil, bool or DocumentFormattingOptions
 	*/
 	DocumentFormattingProvider interface{} `json:"documentFormattingProvider,omitempty"`
+
+	/*
+	  The server provides rename support. RenameOptions may only be
+	  specified if the client states that it supports
+	  `prepareSupport` in its initial `initialize` request.
+
+	  Type must be nil, bool or RenameOptions
+	*/
+	RenameProvider interface{} `json:"renameProvider,omitempty"`
+
+	/*
+	  The server provides document symbol support.
+
+	  Type must be nil, bool or DocumentSymbolOptions
+	*/
+	DocumentSymbolProvider interface{} `json:"documentSymbolProvider,omitempty"`
 }
 
 type DocumentFormattingOptions struct {

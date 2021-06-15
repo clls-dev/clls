@@ -1,6 +1,6 @@
 package clls
 
-var builtinFuncs = func() []*function {
+var builtinFuncs = func() []*Function {
 	names := []string{
 		"if",
 		"point_add", "c", "list",
@@ -8,15 +8,15 @@ var builtinFuncs = func() []*function {
 		"divmod", "substr", "concat", "logand", "qq", "unquote", "q",
 		"quote", "i",
 	}
-	funcs := make([]*function, len(names))
+	funcs := make([]*Function, len(names))
 	for i, n := range names {
-		funcs[i] = &function{Name: &Token{Value: n}, Builtin: true}
+		funcs[i] = &Function{Name: &Token{Value: n}, Builtin: true}
 	}
 	return funcs
 }()
 
-var builtinFuncsByName = func() map[string]*function {
-	m := map[string]*function{}
+var BuiltinFuncsByName = func() map[string]*Function {
+	m := map[string]*Function{}
 	for _, f := range builtinFuncs {
 		m[f.Name.Value] = f
 	}

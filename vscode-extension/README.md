@@ -22,3 +22,4 @@ You need the `clls` program in your `$PATH`
 This Language Server works for .clvm files. It has the following language features:
 - Semantic tokens (syntax highlighting)
 - Formatting (very rough for now)
+- Rename (not across includes yet as it would require to parse all .clvm files in the project and it's not practical for now)

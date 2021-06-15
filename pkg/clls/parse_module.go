@@ -3,25 +3,118 @@ package clls
 import (
 	"fmt"
 	"math/rand"
+	"path/filepath"
+	"strings"
 
+	"github.com/clls-dev/clls/pkg/lsp"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
 type module struct {
-	Args         interface{}
-	Constants    []*constant
-	Functions    []*function
-	funcsByName  map[string]*function
-	constsByName map[string]*constant
-	Main         *CodeBody
-	Includes     map[string]*include
-	ModToken     *Token
-	IsMod        bool
-	Comments     []*Token
+	Args            interface{}
+	Constants       []*constant
+	Functions       []*Function
+	FunctionsByName map[string]*Function
+	constsByName    map[string]*constant
+	Main            *CodeBody
+	Includes        map[string]*include
+	ModToken        *Token
+	IsMod           bool
+	Comments        []*Token
 }
 
-func parseModules(l *zap.Logger, tree *ASTNode, readFile func(string) (string, error), tokens []*Token) ([]*module, error) {
+type Symbol struct {
+	Token      *Token
+	References []*Token
+}
+
+func (s *Symbol) Tokens() []*Token {
+	if s == nil {
+		return nil
+	}
+	return append(s.References, s.Token)
+}
+
+func makeSymbolsMap(l *zap.Logger, cb *CodeBody) map[*Token][]*Token {
+	m := map[*Token][]*Token{}
+	switch cb.Kind {
+	case CallBodyKind, FuncVarBodyKind:
+		l.Debug("found func token", zap.Any("token", cb.Token))
+		if cb.Token == nil {
+			panic("found call body kind with no token")
+		}
+		if cb.Function == nil {
+			panic("found call body kind with no func")
+		}
+		m[cb.Function] = append(m[cb.Function], cb.Token)
+
+	case ConstBodyKind:
+		l.Debug("found func token", zap.Any("token", cb.Token))
+		m[cb.Constant.Name.(*Token)] = append(m[cb.Constant.Name.(*Token)], cb.Token)
+
+	case VarBodyKind:
+		l.Debug("found var token", zap.Any("token", cb.Token))
+		m[cb.Var] = append(m[cb.Var], cb.Token)
+	}
+	for _, c := range cb.Children {
+		sm := makeSymbolsMap(l, c)
+		for k, v := range sm {
+			m[k] = append(m[k], v...)
+		}
+	}
+	return m
+}
+
+func (m *module) constTokens() map[string]*Token {
+	r := map[string]*Token{}
+	for _, im := range m.Includes {
+		if im.Module != nil {
+			for k, v := range im.Module.constTokens() {
+				r[k] = v
+			}
+		}
+	}
+	for _, c := range m.Constants {
+		nt := c.Name.(*Token)
+		r[nt.Value] = nt
+	}
+	return r
+}
+
+func (m *module) Symbols(l *zap.Logger) []*Symbol {
+	syms := map[*Token][]*Token{}
+
+	for _, c := range m.Constants {
+		syms[c.Name.(*Token)] = []*Token{}
+	}
+
+	ctoks := m.constTokens()
+	for _, f := range m.Functions {
+		vts := f.varTokens()
+		for k, v := range ctoks {
+			vts[k] = v
+		}
+		bodySymbols := makeSymbolsMap(l, f.Body)
+		l.Debug("found var tokens", zap.Any("vts", vts), zap.Any("bvts", len(bodySymbols)))
+		for k, toks := range bodySymbols {
+			syms[k] = append(syms[k], toks...)
+		}
+	}
+
+	if m.Main != nil {
+		for k, toks := range makeSymbolsMap(l, m.Main) {
+			syms[k] = append(syms[k], toks...)
+		}
+	}
+	result := []*Symbol{}
+	for k, v := range syms {
+		result = append(result, &Symbol{Token: k, References: v})
+	}
+	return result
+}
+
+func parseModules(l *zap.Logger, tree *ASTNode, documentURI lsp.DocumentURI, readFile func(string) (string, error), tokens []*Token) ([]*module, error) {
 	if tree == nil {
 		return nil, errors.New("empty tree")
 	}
@@ -47,10 +140,10 @@ func parseModules(l *zap.Logger, tree *ASTNode, readFile func(string) (string, e
 		firstChild := n.Children[0]
 
 		mod := &module{
-			funcsByName:  map[string]*function{},
-			constsByName: map[string]*constant{},
-			Includes:     map[string]*include{},
-			Comments:     comments,
+			FunctionsByName: map[string]*Function{},
+			constsByName:    map[string]*constant{},
+			Includes:        map[string]*include{},
+			Comments:        comments,
 		}
 
 		if t, ok := firstChild.(*Token); ok {
@@ -91,7 +184,9 @@ func parseModules(l *zap.Logger, tree *ASTNode, readFile func(string) (string, e
 					if t, ok := mn.Children[1].(*Token); ok {
 						filePath = t.Value
 						var err error
-						if fincl.Module, err = LoadCLVM(l, filePath, readFile); err != nil {
+						dir := filepath.Dir(strings.TrimPrefix(documentURI, "file://"))
+						uri := "file://" + filepath.Join(dir, filePath)
+						if fincl.Module, err = LoadCLVM(l, filePath, uri, readFile); err != nil {
 							fincl.Module = nil
 							fincl.LoadError = err
 						}
@@ -102,7 +197,7 @@ func parseModules(l *zap.Logger, tree *ASTNode, readFile func(string) (string, e
 				}
 				mod.Includes[filePath] = fincl
 			case "defun", "defun-inline", "defmacro":
-				f := &function{
+				f := &Function{
 					Raw:          mn,
 					Inline:       t.Value == "defun-inline",
 					Macro:        t.Value == "defmacro",
@@ -113,15 +208,14 @@ func parseModules(l *zap.Logger, tree *ASTNode, readFile func(string) (string, e
 				var err error
 
 				if len(mn.Children) > 1 {
-					f.Name, ok = mn.Children[1].(*Token)
-					if ok {
-						mod.funcsByName[f.Name.Value] = f
+					if f.Name, ok = mn.Children[1].(*Token); ok {
+						mod.FunctionsByName[f.Name.Value] = f
 					}
 				}
 
 				if len(mn.Children) > 2 {
 					f.Params = mn.Children[2]
-					if f.ParamsBody, err = parseBody(mod, mod.vars(), mn.Children[2]); err != nil {
+					if f.ParamsBody, err = parseBody(mod, nil, mn.Children[2]); err != nil {
 						l.Error("failed to parse params body", zap.Error(err))
 						f.ParamsBody = nil
 					}
@@ -144,7 +238,7 @@ func parseModules(l *zap.Logger, tree *ASTNode, readFile func(string) (string, e
 				}
 
 				if len(mn.Children) > 2 {
-					valBody, err := parseBody(mod, mod.vars(), mn.Children[2])
+					valBody, err := parseBody(mod, nil, mn.Children[2])
 					if err == nil {
 						c.Value = valBody
 					}
@@ -156,26 +250,19 @@ func parseModules(l *zap.Logger, tree *ASTNode, readFile func(string) (string, e
 		}
 
 		for _, f := range mod.Functions {
-			vars := make(map[string]struct{})
-			for k := range mod.vars() {
-				vars[k] = struct{}{}
-			}
-			for k := range f.vars() {
-				vars[k] = struct{}{}
-			}
-			var err error
-			if f.Body, err = parseBody(mod, vars, f.RawBody); err != nil {
-				l.Error("failed to parse function body", zap.Error(err))
-				f.Body = nil
+			if f.RawBody != nil {
+				var err error
+				if f.Body, err = parseBody(mod, f.varTokens(), f.RawBody); err != nil {
+					l.Error("parse function body", zap.Error(err))
+					f.Body = nil
+				}
 			}
 		}
 
-		if mod.IsMod {
+		if mod.IsMod && len(remaining) > 0 {
 			var err error
-			if len(remaining) > 0 {
-				if mod.Main, err = parseBody(mod, mod.vars(), remaining[len(remaining)-1]); err != nil {
-					return nil, errors.Wrap(err, "parse body")
-				}
+			if mod.Main, err = parseBody(mod, mod.varTokens(), remaining[len(remaining)-1]); err != nil {
+				return nil, errors.Wrap(err, "parse main body")
 			}
 		}
 
@@ -206,15 +293,16 @@ type CodeBody struct {
 	Token    *Token
 
 	Constant   *constant   `json:",omitempty"`
-	Function   function    `json:",omitempty"`
+	Function   *Token      `json:",omitempty"`
 	IfCond     *CodeBody   `json:",omitempty"`
 	IfBranch   *CodeBody   `json:",omitempty"`
 	ElseBranch *CodeBody   `json:",omitempty"`
 	CallArgs   []*CodeBody `json:",omitempty"`
+	Var        *Token      `json:",omitempty"`
 	opChildren []*CodeBody
 }
 
-func parseBody(mod *module, vars map[string]struct{}, tree interface{}) (*CodeBody, error) {
+func parseBody(mod *module, vars map[string]*Token, tree interface{}) (*CodeBody, error) {
 	if tree == nil {
 		return nil, nil
 	}
@@ -224,26 +312,31 @@ func parseBody(mod *module, vars map[string]struct{}, tree interface{}) (*CodeBo
 		kind := valueBodyKind
 		if t == nil {
 			kind = blockBodyKind
-		} else if _, ok := vars[t.Value]; ok {
-			kind = VarBodyKind
-		} else if _, ok := mod.constsByName[t.Value]; ok {
-			kind = ConstBodyKind
+		} else if v, ok := vars[t.Value]; ok {
+			return &CodeBody{
+				Kind:  VarBodyKind,
+				Raw:   tree,
+				Token: t,
+				Var:   v,
+			}, nil
+		} else if c, ok := mod.constsByName[t.Value]; ok {
+			return &CodeBody{Kind: ConstBodyKind, Raw: tree, Token: t, Constant: c}, nil
 		} else {
 			for _, sm := range mod.Includes {
 				if sm.Module == nil {
 					continue
 				}
-				if _, ok := sm.Module.constsByName[t.Value]; ok {
-					return &CodeBody{Kind: ConstBodyKind, Raw: tree, Token: t}, nil
+				if c, ok := sm.Module.constsByName[t.Value]; ok {
+					return &CodeBody{Kind: ConstBodyKind, Raw: tree, Token: t, Constant: c}, nil
 				}
 			}
 
-			f, ok := mod.funcsByName[t.Text]
+			f, ok := mod.FunctionsByName[t.Text]
 			if !ok {
-				f, ok = builtinFuncsByName[t.Text]
+				f, ok = BuiltinFuncsByName[t.Text]
 			}
 			if ok {
-				return &CodeBody{Kind: FuncVarBodyKind, Raw: tree, Function: *f, Token: t}, nil
+				return &CodeBody{Kind: FuncVarBodyKind, Raw: tree, Function: f.Name, Token: t}, nil
 			}
 		}
 		return &CodeBody{Kind: kind, Raw: tree, Token: t}, nil
@@ -268,6 +361,7 @@ func parseBody(mod *module, vars map[string]struct{}, tree interface{}) (*CodeBo
 							return nil, errors.Wrap(err, "parse if condition")
 						}
 						cb.IfCond = icb
+						cb.Children = append(cb.Children, icb)
 					}
 					if len(tree.Children) > 2 {
 						ib, err := parseBody(mod, vars, tree.Children[2])
@@ -275,6 +369,7 @@ func parseBody(mod *module, vars map[string]struct{}, tree interface{}) (*CodeBo
 							return nil, errors.Wrap(err, "parse if branch")
 						}
 						cb.IfBranch = ib
+						cb.Children = append(cb.Children, ib)
 					}
 					if len(tree.Children) > 3 {
 						eb, err := parseBody(mod, vars, tree.Children[3])
@@ -282,6 +377,7 @@ func parseBody(mod *module, vars map[string]struct{}, tree interface{}) (*CodeBo
 							return nil, errors.Wrap(err, "parse else branch")
 						}
 						cb.ElseBranch = eb
+						cb.Children = append(cb.Children, eb)
 					}
 					return cb, nil
 				case "+", "-", "*", "/", ">", "=", ">s":
@@ -308,9 +404,9 @@ func parseBody(mod *module, vars map[string]struct{}, tree interface{}) (*CodeBo
 								Constant: c,
 							}, nil
 						}
-						f, ok := mod.funcsByName[t.Value]
+						f, ok := mod.FunctionsByName[t.Value]
 						if !ok {
-							f, ok = builtinFuncsByName[t.Value]
+							f, ok = BuiltinFuncsByName[t.Value]
 						}
 						if ok {
 							args := []*CodeBody(nil)
@@ -325,8 +421,9 @@ func parseBody(mod *module, vars map[string]struct{}, tree interface{}) (*CodeBo
 							return &CodeBody{
 								Raw:      tree,
 								Kind:     CallBodyKind,
-								Function: *f,
+								Function: f.Name,
 								CallArgs: args,
+								Children: args,
 								Token:    t,
 							}, nil
 						}

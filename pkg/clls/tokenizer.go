@@ -6,16 +6,39 @@ import (
 	"regexp"
 	"unicode"
 
+	"github.com/clls-dev/clls/pkg/lsp"
 	"github.com/pkg/errors"
 )
 
 type Token struct {
-	Value     string
-	Index     int
-	Kind      tokenKind
-	Text      string
-	Line      int
-	StartChar int // relative to line start
+	Value       string
+	Index       int
+	Kind        tokenKind
+	Text        string
+	Line        int
+	StartChar   int // relative to line start
+	DocumentURI lsp.DocumentURI
+}
+
+func (t *Token) EndChar() int {
+	if t.Kind == lineReturnToken {
+		return 0
+	}
+	return t.StartChar + len(t.Text)
+}
+
+func (t *Token) EndLine() int {
+	if t.Kind == lineReturnToken {
+		return t.Line + 1
+	}
+	return t.Line
+}
+
+func (t *Token) Range() lsp.Range {
+	return lsp.Range{
+		Start: lsp.Position{Line: lsp.UInteger(t.Line), Character: lsp.UInteger(t.StartChar)},
+		End:   lsp.Position{Line: lsp.UInteger(t.EndLine()), Character: lsp.UInteger(t.EndChar())},
+	}
 }
 
 type tokenKind int
@@ -31,8 +54,8 @@ const (
 	lineReturnToken
 )
 
-func tokenizeSync(text string) ([]*Token, error) {
-	tch, errptr := tokenize(text)
+func tokenizeSync(text string, documentURI lsp.DocumentURI) ([]*Token, error) {
+	tch, errptr := tokenize(text, documentURI)
 	tokens := []*Token(nil)
 	for token := range tch {
 		tokens = append(tokens, token)
@@ -43,7 +66,7 @@ func tokenizeSync(text string) ([]*Token, error) {
 	return tokens, nil
 }
 
-func tokenize(text string) (_ chan *Token, errptr *error) {
+func tokenize(text string, documentURI lsp.DocumentURI) (_ chan *Token, errptr *error) {
 	err := error(nil)
 	errptr = &err
 	ch := make(chan *Token)
@@ -72,10 +95,11 @@ func tokenize(text string) (_ chan *Token, errptr *error) {
 		cutWord := func() {
 			if wordStart != -1 && i-wordStart > 0 {
 				ch <- updateTokenLine(&Token{
-					Value: text[wordStart:i],
-					Index: wordStart,
-					Text:  text[wordStart:i],
-					Kind:  basicToken,
+					Value:       text[wordStart:i],
+					Index:       wordStart,
+					Text:        text[wordStart:i],
+					Kind:        basicToken,
+					DocumentURI: documentURI,
 				})
 				wordStart = -1
 			}
@@ -90,10 +114,11 @@ func tokenize(text string) (_ chan *Token, errptr *error) {
 					commentEnd = len(text)
 				}
 				ch <- updateTokenLine(&Token{
-					Value: text[commentStart+1 : commentEnd],
-					Index: commentStart,
-					Text:  text[commentStart:commentEnd],
-					Kind:  commentToken,
+					Value:       text[commentStart+1 : commentEnd],
+					Index:       commentStart,
+					Text:        text[commentStart:commentEnd],
+					Kind:        commentToken,
+					DocumentURI: documentURI,
 				})
 				i = commentEnd
 			} else if c == '(' || c == ')' {
@@ -103,20 +128,22 @@ func tokenize(text string) (_ chan *Token, errptr *error) {
 					kind = parensCloseToken
 				}
 				ch <- updateTokenLine(&Token{
-					Value: string(c),
-					Index: i,
-					Text:  string(c),
-					Kind:  kind,
+					Value:       string(c),
+					Index:       i,
+					Text:        string(c),
+					Kind:        kind,
+					DocumentURI: documentURI,
 				})
 				i++
 			} else if is := regexp.MustCompile(`^\r?\n`).Find([]byte(text[i:])); len(is) > 0 {
 				cutWord()
 				lines = append(lines, i+len(is))
 				ch <- updateTokenLine(&Token{
-					Value: text[i : i+len(is)],
-					Index: i,
-					Text:  text[i : i+len(is)],
-					Kind:  lineReturnToken,
+					Value:       text[i : i+len(is)],
+					Index:       i,
+					Text:        text[i : i+len(is)],
+					Kind:        lineReturnToken,
+					DocumentURI: documentURI,
 				})
 				i += len(is)
 			} else if unicode.IsSpace(rune(c)) {
@@ -133,10 +160,11 @@ func tokenize(text string) (_ chan *Token, errptr *error) {
 					nextNonSpace++
 				}
 				ch <- updateTokenLine(&Token{
-					Value: text[spaceStart:nextNonSpace],
-					Index: spaceStart,
-					Text:  text[spaceStart:nextNonSpace],
-					Kind:  spaceToken,
+					Value:       text[spaceStart:nextNonSpace],
+					Index:       spaceStart,
+					Text:        text[spaceStart:nextNonSpace],
+					Kind:        spaceToken,
+					DocumentURI: documentURI,
 				})
 				i = nextNonSpace
 			} else if c == '"' {
@@ -155,10 +183,11 @@ func tokenize(text string) (_ chan *Token, errptr *error) {
 
 					if c == '"' {
 						ch <- updateTokenLine(&Token{
-							Value: quoteValue,
-							Index: quoteStart,
-							Text:  text[quoteStart : j+1],
-							Kind:  quoteToken,
+							Value:       quoteValue,
+							Index:       quoteStart,
+							Text:        text[quoteStart : j+1],
+							Kind:        quoteToken,
+							DocumentURI: documentURI,
 						})
 						quoteStart = -1
 						quoteValue = ""

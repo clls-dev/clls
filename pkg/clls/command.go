@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 
 	"github.com/clls-dev/clls/pkg/examples"
+	"github.com/clls-dev/clls/pkg/lsp"
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -52,7 +53,7 @@ func Command(rootName string) (*ffcli.Command, *string) {
 					}
 				}
 
-				nmod, err := LoadCLVMFromStrings(l, "main.clvm", sources)
+				nmod, err := LoadCLVMFromStrings(l, "main.clvm", "file://main.clvm", sources)
 				if err != nil {
 					return errors.Wrap(err, "parse clvm")
 				}
@@ -64,7 +65,7 @@ func Command(rootName string) (*ffcli.Command, *string) {
 				if filePath == "" {
 					return errors.New("missing file path argument")
 				}
-				nmod, err := LoadCLVM(l, filePath, func(p string) (string, error) {
+				nmod, err := LoadCLVM(l, filePath, "file://"+filePath, func(p string) (string, error) {
 					b, err := ioutil.ReadFile(p)
 					if err != nil {
 						return "", err
@@ -91,14 +92,15 @@ func Command(rootName string) (*ffcli.Command, *string) {
 	}, r
 }
 
-func LoadCLVM(l *zap.Logger, p string, readFile func(string) (string, error)) (*module, error) {
+// TODO: replace p with documentURI
+func LoadCLVM(l *zap.Logger, p string, documentURI lsp.DocumentURI, readFile func(string) (string, error)) (*module, error) {
 	f, err := readFile(p)
 	if err != nil {
 		return nil, errors.Wrap(err, fmt.Sprintf("read file '%s'", p))
 	}
 
 	tokens := []*Token(nil)
-	tch, errptr := tokenize(f)
+	tch, errptr := tokenize(f, documentURI)
 	duptch := make(chan *Token)
 	go func() {
 		defer close(duptch)
@@ -117,7 +119,7 @@ func LoadCLVM(l *zap.Logger, p string, readFile func(string) (string, error)) (*
 		return nil, errors.Wrap(*errptr, fmt.Sprintf("tokenize file '%s'", p))
 	}
 
-	mods, err := parseModules(l, ast, readFile, tokens)
+	mods, err := parseModules(l, ast, documentURI, readFile, tokens)
 	if err != nil {
 		return nil, errors.Wrap(err, "parse modules")
 	}
@@ -129,8 +131,8 @@ func LoadCLVM(l *zap.Logger, p string, readFile func(string) (string, error)) (*
 
 }
 
-func LoadCLVMFromStrings(l *zap.Logger, p string, files map[string]string) (*module, error) {
-	return LoadCLVM(l, p, func(p string) (string, error) {
+func LoadCLVMFromStrings(l *zap.Logger, p string, documentURI lsp.DocumentURI, files map[string]string) (*module, error) {
+	return LoadCLVM(l, p, documentURI, func(p string) (string, error) {
 		f, ok := files[p]
 		if !ok {
 			return "", fmt.Errorf("unknown file '%s'", p)
@@ -145,7 +147,7 @@ type constant struct {
 	Value *CodeBody
 }
 
-type function struct {
+type Function struct {
 	Raw          *ASTNode
 	RawBody      interface{}
 	KeywordToken *Token
@@ -159,26 +161,37 @@ type function struct {
 }
 
 func paramsNames(n interface{}) map[string]struct{} {
-	v := map[string]struct{}{}
+	toks := paramsTokens(n)
+	v := make(map[string]struct{}, len(toks))
+	for _, t := range toks {
+		v[t.Value] = struct{}{}
+	}
+	return v
+}
+
+func paramsTokens(n interface{}) map[string]*Token {
+	v := map[string]*Token{}
 	switch n := n.(type) {
 	case *Token:
-		v[n.Value] = struct{}{}
+		if n.Kind == basicToken && n.Text != "." {
+			v[n.Text] = n
+		}
 	case *ASTNode:
 		for _, c := range n.Children {
-			cn := paramsNames(c)
-			for k := range cn {
-				if k == "." {
-					continue
-				}
-				v[k] = struct{}{}
+			for k, sv := range paramsTokens(c) {
+				v[k] = sv
 			}
 		}
 	}
 	return v
 }
 
-func (f *function) vars() map[string]struct{} {
+func (f *Function) vars() map[string]struct{} {
 	return paramsNames(f.Params)
+}
+
+func (f *Function) varTokens() map[string]*Token {
+	return paramsTokens(f.Params)
 }
 
 type include struct {
@@ -190,6 +203,10 @@ type include struct {
 
 func (m *module) vars() map[string]struct{} {
 	return paramsNames(m.Args)
+}
+
+func (m *module) varTokens() map[string]*Token {
+	return paramsTokens(m.Args)
 }
 
 var ConditionCodes = func() string {

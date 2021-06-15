@@ -8,12 +8,12 @@ import (
 	"go.uber.org/zap"
 )
 
-func Prettify(l *zap.Logger, fo *lsp.FormattingOptions, text string) (string, int, error) {
-	tokens, err := tokenizeSync(text)
+func Prettify(l *zap.Logger, fo *lsp.FormattingOptions, text string, documentURI lsp.DocumentURI) (string, int, error) {
+	tokens, err := tokenizeSync(text, documentURI)
 	if err != nil {
 		return "", 0, errors.Wrap(err, "tokenize")
 	}
-	l.Debug("got tokens", zap.Any("tokens", tokens))
+	//l.Debug("got tokens", zap.Any("tokens", tokens))
 	final := ""
 	indent := "\t"
 	if fo.InsertSpaces {

@@ -59,8 +59,7 @@ func main() {
 			switch req.Method {
 			case "initialize":
 				reply := lsp.ResponseMessage{
-					Message: lsp.Message{Version: "2.0"},
-					ID:      req.ID,
+					ID: req.ID,
 					Result: lsp.InitializeResult{
 						ServerInfo: &lsp.InitializeResultServerInfo{
 							Name:    "clls",
@@ -73,6 +72,8 @@ func main() {
 								Full:   true,
 							},
 							DocumentFormattingProvider: true,
+							RenameProvider:             true,
+							// DocumentSymbolProvider:     true,
 						},
 					},
 				}
@@ -97,6 +98,86 @@ func main() {
 				tdi := params["textDocument"].(map[string]interface{})
 				uriStr := tdi["uri"].(string)
 				delete(docs, uriStr)
+
+			case "textDocument/rename":
+				uriStr := req.Params.(map[string]interface{})["textDocument"].(map[string]interface{})["uri"].(string)
+				l.Debug("textDocument/rename " + uriStr)
+				if !strings.HasPrefix(uriStr, fileURIPrefix) {
+					if err := replyWithError(l, os.Stdout, req.ID, errors.New("textDocument.uri is not a file uri")); err != nil {
+						return errors.Wrap(err, "reply with error to textDocument/renamel")
+					}
+					continue
+				}
+				pathStr := strings.TrimPrefix(uriStr, fileURIPrefix)
+				l.Debug("parsed uri", zap.String("path", pathStr))
+				dirname := filepath.Dir(pathStr)
+				filename := filepath.Base(pathStr)
+				mod, err := clls.LoadCLVM(l, filename, uriStr, func(p string) (string, error) {
+					if d, ok := docs["file://"+filepath.Join(dirname, p)]; ok {
+						return d, nil
+					}
+					b, err := ioutil.ReadFile(filepath.Join(dirname, p))
+					if err != nil {
+						return "", err
+					}
+					return string(b), err
+				})
+				if err != nil {
+					if err := replyWithError(l, os.Stdout, req.ID, errors.Wrap(err, "parse module")); err != nil {
+						return errors.Wrap(err, "reply with error to textDocument/renamel")
+					}
+					continue
+				}
+				//l.Debug("parsed mod", zap.Any("val", mod))
+
+				p := req.Params.(map[string]interface{})["position"].(map[string]interface{})
+				line := int(p["line"].(float64))
+				char := int(p["character"].(float64))
+
+				newName := req.Params.(map[string]interface{})["newName"].(string)
+
+				ss := mod.Symbols(l)
+				l.Debug("got symbols", zap.Any("ss", ss))
+				found := false
+				for _, s := range ss {
+					for _, st := range s.Tokens() {
+						if st.Line != line {
+							continue
+						}
+						if char < st.StartChar || st.EndChar() <= char {
+							continue
+						}
+
+						edit := lsp.WorkspaceEdit{
+							Changes: map[string][]lsp.TextEdit{},
+						}
+						for _, t := range s.Tokens() {
+							edit.Changes[t.DocumentURI] = append(edit.Changes[t.DocumentURI], lsp.TextEdit{
+								Range:   t.Range(),
+								NewText: newName,
+							})
+						}
+
+						reply := lsp.ResponseMessage{
+							ID:     req.ID,
+							Result: edit,
+						}
+						if err := doReply(l, os.Stdout, &reply); err != nil {
+							return errors.Wrap(err, "reply to semantic tokens")
+						}
+						found = true
+						break
+					}
+					if found {
+						break
+					}
+				}
+
+				if !found {
+					if err := replyWithError(l, os.Stdout, req.ID, errors.New("symbol not found")); err != nil {
+						return errors.Wrap(err, "reply with error to textDocument/rename")
+					}
+				}
 
 			case "textDocument/formatting":
 				uriStr := req.Params.(map[string]interface{})["textDocument"].(map[string]interface{})["uri"].(string)
@@ -137,7 +218,7 @@ func main() {
 					}
 				}
 
-				newText, linesCount, err := clls.Prettify(l, &formattingOptions, fileStr)
+				newText, linesCount, err := clls.Prettify(l, &formattingOptions, fileStr, uriStr)
 				if err != nil {
 					if err := replyWithError(l, os.Stdout, req.ID, errors.New("prettify file content")); err != nil {
 						return errors.Wrap(err, "reply with error to textDocument/formatting")
@@ -146,8 +227,7 @@ func main() {
 				}
 
 				reply := lsp.ResponseMessage{
-					Message: lsp.Message{Version: "2.0"},
-					ID:      req.ID,
+					ID: req.ID,
 					Result: []lsp.TextEdit{{
 						Range: lsp.Range{
 							Start: lsp.Position{Line: 0, Character: 0},
@@ -173,7 +253,7 @@ func main() {
 				l.Debug("parsed uri", zap.String("path", pathStr))
 				dirname := filepath.Dir(pathStr)
 				filename := filepath.Base(pathStr)
-				mod, err := clls.LoadCLVM(l, filename, func(p string) (string, error) {
+				mod, err := clls.LoadCLVM(l, filename, uriStr, func(p string) (string, error) {
 					if d, ok := docs["file://"+filepath.Join(dirname, p)]; ok {
 						return d, nil
 					}
@@ -186,16 +266,15 @@ func main() {
 				if err != nil {
 					l.Error("load clvm", zap.Error(err))
 					reply := lsp.ResponseMessage{
-						Message: lsp.Message{Version: "2.0"},
-						ID:      req.ID,
-						Result:  lsp.SemanticTokens{},
+						ID:     req.ID,
+						Result: lsp.SemanticTokens{},
 					}
 					if err := doReply(l, os.Stdout, &reply); err != nil {
 						return errors.Wrap(err, "reply to semantic tokens")
 					}
 					continue
 				}
-				l.Debug("parsed mod", zap.Any("val", mod))
+				//l.Debug("parsed mod", zap.Any("val", mod))
 
 				inserts := []insert(nil)
 
@@ -214,7 +293,7 @@ func main() {
 						if t, ok := c.Name.(*clls.Token); ok && t != nil {
 							inserts = append(inserts, insert{Kind: "variable", Modifiers: []string{"readonly"}, Token: t})
 						}
-						inserts = insertBody(inserts, c.Value)
+						inserts = insertBody(inserts, c.Value, clls.BuiltinFuncsByName)
 					}
 				}
 
@@ -229,6 +308,13 @@ func main() {
 					}
 				}
 
+				allFuncs := map[string]*clls.Function{}
+				for k, v := range clls.BuiltinFuncsByName {
+					allFuncs[k] = v
+				}
+				for k, v := range mod.FunctionsByName {
+					allFuncs[k] = v
+				}
 				if len(mod.Functions) > 0 {
 					for _, f := range mod.Functions {
 						inserts = append(inserts, insert{Kind: "keyword", Token: f.KeywordToken})
@@ -238,12 +324,12 @@ func main() {
 						if f.Params != nil {
 							inserts = insertParamsTokens(inserts, f.Params)
 						}
-						inserts = insertBody(inserts, f.Body)
+						inserts = insertBody(inserts, f.Body, allFuncs)
 					}
 				}
 
 				if mod.Main != nil {
-					inserts = insertBody(inserts, mod.Main)
+					inserts = insertBody(inserts, mod.Main, allFuncs)
 				}
 
 				data := []lsp.UInteger(nil)
@@ -270,8 +356,6 @@ func main() {
 						}
 						return ai < bi
 					})
-
-					l.Debug("generated tokens", zap.Any("inserts", inserts))
 
 					ltoks := lsph.SemanticTokenSlice{}
 
@@ -324,9 +408,8 @@ func main() {
 				}
 
 				reply := lsp.ResponseMessage{
-					Message: lsp.Message{Version: "2.0"},
-					ID:      req.ID,
-					Result:  lsp.SemanticTokens{Data: data},
+					ID:     req.ID,
+					Result: lsp.SemanticTokens{Data: data},
 				}
 				if err := doReply(l, os.Stdout, &reply); err != nil {
 					return errors.Wrap(err, "reply to semantic tokens")
@@ -336,9 +419,8 @@ func main() {
 					delete(docs, k)
 				}
 				reply := lsp.ResponseMessage{
-					Message: lsp.Message{Version: "2.0"},
-					ID:      req.ID,
-					Result:  nil,
+					ID:     req.ID,
+					Result: nil,
 				}
 				if err := doReply(l, os.Stdout, &reply); err != nil {
 					return errors.Wrap(err, "reply to shutdown")
@@ -399,7 +481,7 @@ func insertParamsTokens(inserts []insert, a interface{}) []insert {
 	return inserts
 }
 
-func insertBody(inserts []insert, node *clls.CodeBody) []insert {
+func insertBody(inserts []insert, node *clls.CodeBody, funcsByName map[string]*clls.Function) []insert {
 	if node == nil {
 		return inserts
 	}
@@ -408,14 +490,14 @@ func insertBody(inserts []insert, node *clls.CodeBody) []insert {
 		if node.Token != nil {
 			inserts = append(inserts, insert{Kind: "keyword", Token: node.Token})
 		}
-		inserts = insertBody(inserts, node.IfCond)
-		inserts = insertBody(inserts, node.IfBranch)
-		inserts = insertBody(inserts, node.ElseBranch)
+		inserts = insertBody(inserts, node.IfCond, funcsByName)
+		inserts = insertBody(inserts, node.IfBranch, funcsByName)
+		inserts = insertBody(inserts, node.ElseBranch, funcsByName)
 	case clls.CallBodyKind:
 		kind := "function"
 		mods := []string(nil)
-		if node.Function.Builtin {
-			switch node.Function.Name.Value {
+		if fn, ok := funcsByName[node.Function.Value]; ok && fn.Builtin {
+			switch fn.Name.Value {
 			case "x":
 				kind = "keyword"
 			default:
@@ -426,14 +508,14 @@ func insertBody(inserts []insert, node *clls.CodeBody) []insert {
 			inserts = append(inserts, insert{Kind: kind, Modifiers: mods, Token: node.Token})
 		}
 		for _, a := range node.CallArgs {
-			inserts = insertBody(inserts, a)
+			inserts = insertBody(inserts, a, funcsByName)
 		}
 	case clls.OperatorBodyKind:
 		if node.Token != nil {
 			inserts = append(inserts, insert{Kind: "operator", Token: node.Token})
 		}
 		for _, child := range node.Children {
-			inserts = insertBody(inserts, child)
+			inserts = insertBody(inserts, child, funcsByName)
 		}
 	case clls.ConstBodyKind:
 		if node.Token != nil {
@@ -446,7 +528,7 @@ func insertBody(inserts []insert, node *clls.CodeBody) []insert {
 	case clls.FuncVarBodyKind:
 		k := "function"
 		mods := []string(nil)
-		if node.Function.Builtin {
+		if fn, ok := funcsByName[node.Function.Value]; ok && fn.Builtin {
 			k = "function"
 			mods = append(mods, "defaultLibrary")
 		}
@@ -466,7 +548,7 @@ func insertBody(inserts []insert, node *clls.CodeBody) []insert {
 			inserts = append(inserts, insert{Kind: kind, Token: node.Token})
 		}
 		for _, child := range node.Children {
-			inserts = insertBody(inserts, child)
+			inserts = insertBody(inserts, child, funcsByName)
 		}
 	}
 	return inserts
@@ -548,6 +630,9 @@ func readHeader(l *zap.Logger, r io.Reader) (*Header, error) {
 }
 
 func doReply(l *zap.Logger, w io.Writer, res *lsp.ResponseMessage) error {
+	if res.Message.Version == "" {
+		res.Message.Version = "2.0"
+	}
 	replyBytes, err := json.Marshal(res)
 	if err != nil {
 		return errors.Wrap(err, "marshal reply")
@@ -566,8 +651,7 @@ func doReply(l *zap.Logger, w io.Writer, res *lsp.ResponseMessage) error {
 func replyWithError(l *zap.Logger, w io.Writer, id lsp.IntegerOrString, err error) error {
 	l.Error(fmt.Sprintf("replying to %s with error", id), zap.Error(err))
 	return doReply(l, w, &lsp.ResponseMessage{
-		Message: lsp.Message{Version: "2.0"},
-		ID:      id,
+		ID: id,
 		Error: &lsp.ResponseError{
 			Code:    lsp.UnknownErrorCode,
 			Message: err.Error(),
