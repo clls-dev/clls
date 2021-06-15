@@ -23,3 +23,7 @@ This Language Server works for .clvm files. It has the following language featur
 - Semantic tokens (syntax highlighting)
 - Formatting (very rough for now)
 - Rename (not across includes yet as it would require to parse all .clvm files in the project and it's not practical for now)
+
+## Donate
+
+xch17hh3c0kjtrrkvnjsvqu3m2wm94yavztdpdr3g8y9gncsv3t9pz2qckyfvx
