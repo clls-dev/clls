@@ -186,7 +186,7 @@ var SemanticTokenModifiers = []string{
 	"defaultLibrary",
 }
 
-var DefaultSemanticTokensLegend = SemanticTokensLegend{
+var StandardSemanticTokensLegend = SemanticTokensLegend{
 	TokenTypes:     SemanticTokenTypes,
 	TokenModifiers: SemanticTokenModifiers,
 }

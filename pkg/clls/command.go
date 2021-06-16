@@ -39,7 +39,7 @@ func Command(rootName string) (*ffcli.Command, *string) {
 				l = zap.NewNop()
 			}
 
-			var mod *module
+			var mod *Module
 			if *ppFlag != "" {
 				sources := map[string]string{"main.clvm": *ppFlag}
 				exs, err := examples.F.ReadDir(".")
@@ -93,7 +93,7 @@ func Command(rootName string) (*ffcli.Command, *string) {
 }
 
 // TODO: replace p with documentURI
-func LoadCLVM(l *zap.Logger, p string, documentURI lsp.DocumentURI, readFile func(string) (string, error)) (*module, error) {
+func LoadCLVM(l *zap.Logger, p string, documentURI lsp.DocumentURI, readFile func(string) (string, error)) (*Module, error) {
 	f, err := readFile(p)
 	if err != nil {
 		return nil, errors.Wrap(err, fmt.Sprintf("read file '%s'", p))
@@ -131,7 +131,7 @@ func LoadCLVM(l *zap.Logger, p string, documentURI lsp.DocumentURI, readFile fun
 
 }
 
-func LoadCLVMFromStrings(l *zap.Logger, p string, documentURI lsp.DocumentURI, files map[string]string) (*module, error) {
+func LoadCLVMFromStrings(l *zap.Logger, p string, documentURI lsp.DocumentURI, files map[string]string) (*Module, error) {
 	return LoadCLVM(l, p, documentURI, func(p string) (string, error) {
 		f, ok := files[p]
 		if !ok {
@@ -197,15 +197,15 @@ func (f *Function) varTokens() map[string]*Token {
 type include struct {
 	Token     *Token
 	Value     interface{}
-	Module    *module
+	Module    *Module
 	LoadError error
 }
 
-func (m *module) vars() map[string]struct{} {
+func (m *Module) vars() map[string]struct{} {
 	return paramsNames(m.Args)
 }
 
-func (m *module) varTokens() map[string]*Token {
+func (m *Module) varTokens() map[string]*Token {
 	return paramsTokens(m.Args)
 }
 

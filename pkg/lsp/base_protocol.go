@@ -1,10 +1,10 @@
 package lsp
 
+import "encoding/json"
+
 type Integer = int64
 type UInteger = uint32
 type Decimal = float64
-
-type DocumentUri = string
 
 type IntegerOrString interface{}
 type IntegerOrNull interface{}
@@ -19,6 +19,12 @@ type RequestMessage struct {
 	ID     IntegerOrString `json:"id"`
 	Method string          `json:"method"`
 	Params ArrayOrObject   `json:"params"`
+}
+type RawRequestMessage struct {
+	Message
+	ID     IntegerOrString `json:"id"`
+	Method string          `json:"method"`
+	Params json.RawMessage `json:"params"`
 }
 type ResponseMessage struct {
 	Message

@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type module struct {
+type Module struct {
 	Args            interface{}
 	Constants       []*constant
 	Functions       []*Function
@@ -66,7 +66,7 @@ func makeSymbolsMap(l *zap.Logger, cb *CodeBody) map[*Token][]*Token {
 	return m
 }
 
-func (m *module) constTokens() map[string]*Token {
+func (m *Module) constTokens() map[string]*Token {
 	r := map[string]*Token{}
 	for _, im := range m.Includes {
 		if im.Module != nil {
@@ -82,7 +82,7 @@ func (m *module) constTokens() map[string]*Token {
 	return r
 }
 
-func (m *module) Symbols(l *zap.Logger) []*Symbol {
+func (m *Module) Symbols(l *zap.Logger) []*Symbol {
 	syms := map[*Token][]*Token{}
 
 	for _, c := range m.Constants {
@@ -114,7 +114,7 @@ func (m *module) Symbols(l *zap.Logger) []*Symbol {
 	return result
 }
 
-func parseModules(l *zap.Logger, tree *ASTNode, documentURI lsp.DocumentURI, readFile func(string) (string, error), tokens []*Token) ([]*module, error) {
+func parseModules(l *zap.Logger, tree *ASTNode, documentURI lsp.DocumentURI, readFile func(string) (string, error), tokens []*Token) ([]*Module, error) {
 	if tree == nil {
 		return nil, errors.New("empty tree")
 	}
@@ -127,7 +127,7 @@ func parseModules(l *zap.Logger, tree *ASTNode, documentURI lsp.DocumentURI, rea
 			comments = append(comments, t)
 		}
 	}
-	mods := []*module(nil)
+	mods := []*Module(nil)
 	for _, n := range tree.Children {
 		n, ok := n.(*ASTNode)
 		if !ok {
@@ -139,7 +139,7 @@ func parseModules(l *zap.Logger, tree *ASTNode, documentURI lsp.DocumentURI, rea
 		}
 		firstChild := n.Children[0]
 
-		mod := &module{
+		mod := &Module{
 			FunctionsByName: map[string]*Function{},
 			constsByName:    map[string]*constant{},
 			Includes:        map[string]*include{},
@@ -302,7 +302,7 @@ type CodeBody struct {
 	opChildren []*CodeBody
 }
 
-func parseBody(mod *module, vars map[string]*Token, tree interface{}) (*CodeBody, error) {
+func parseBody(mod *Module, vars map[string]*Token, tree interface{}) (*CodeBody, error) {
 	if tree == nil {
 		return nil, nil
 	}

@@ -61,7 +61,7 @@ type WorkspaceEdit struct {
 	/**
 	 * Holds changes to existing resources.
 	 */
-	Changes map[DocumentUri][]TextEdit `json:"changes,omitempty"`
+	Changes map[DocumentURI][]TextEdit `json:"changes,omitempty"`
 
 	/**
 	 * Depending on the client capability
