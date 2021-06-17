@@ -48,19 +48,19 @@ func Command(rootName string) (*ffcli.Command, *string) {
 
 			var mod *Module
 			if *ppFlag != "" {
-				sources := map[string]string{"main.clvm": *ppFlag}
+				sources := map[string]string{"file://main.clvm": *ppFlag}
 				exs, err := examples.F.ReadDir(".")
 				if err == nil {
 					for _, e := range exs {
 						b, err := examples.F.ReadFile(e.Name())
 						if err == nil {
 							fmt.Println("source", e.Name())
-							sources[e.Name()] = string(b)
+							sources["file://"+e.Name()] = string(b)
 						}
 					}
 				}
 
-				nmod, err := LoadCLVMFromStrings(l, "main.clvm", "file://main.clvm", sources)
+				nmod, err := LoadCLVMFromStrings(l, "file://main.clvm", sources)
 				if err != nil {
 					return errors.Wrap(err, "parse clvm")
 				}
@@ -134,7 +134,7 @@ func LoadCLVM(l *zap.Logger, documentURI lsp.DocumentURI, readFile func(string) 
 
 }
 
-func LoadCLVMFromStrings(l *zap.Logger, p string, documentURI lsp.DocumentURI, files map[lsp.DocumentURI]string) (*Module, error) {
+func LoadCLVMFromStrings(l *zap.Logger, documentURI lsp.DocumentURI, files map[lsp.DocumentURI]string) (*Module, error) {
 	return LoadCLVM(l, documentURI, func(p lsp.DocumentURI) (string, error) {
 		f, ok := files[p]
 		if !ok {

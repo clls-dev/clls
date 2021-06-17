@@ -9,7 +9,7 @@ import (
 )
 
 func TestParseMarshalAndBack(t *testing.T) {
-	mod, err := LoadCLVMFromStrings(zap.NewNop(), "main.clvm", "file://main.clvm", map[string]string{"main.clvm": file, "condition_codes.clvm": ConditionCodes})
+	mod, err := LoadCLVMFromStrings(zap.NewNop(), "file://main.clvm", map[string]string{"file://main.clvm": file, "file://condition_codes.clvm": ConditionCodes})
 	require.NoError(t, err)
 
 	t.Log(mod)

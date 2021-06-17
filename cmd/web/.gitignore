@@ -1,2 +1,5 @@
-/main.wasm
 /site-repo
+node_modules
+/.cache
+.parcel-cache
+/dist
