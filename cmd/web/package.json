@@ -1,14 +1,16 @@
 {
   "name": "clls-web",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "site_repo/index.html",
   "license": "MIT",
   "dependencies": {
     "codemirror": "^5.61.1",
     "codemirror-languageserver": "^1.4.3",
+    "postcss": "^8.3.5",
     "regenerator-runtime": "^0.13.7"
   },
   "devDependencies": {
+    "@babel/core": "^7.14.6",
     "@parcel/optimizer-data-url": "2.0.0-beta.2",
     "@parcel/transformer-inline-string": "2.0.0-beta.2",
     "parcel": "^2.0.0-beta.2"
