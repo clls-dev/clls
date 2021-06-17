@@ -15,6 +15,7 @@ type LanguageServer interface {
 	DidOpenTextDocument(*lsp.DidOpenTextDocumentParams) error
 	DidCloseTextDocument(*lsp.DidCloseTextDocumentParams) error
 	DidChangeTextDocument(*lsp.DidChangeTextDocumentParams) error
+	DidSaveTextDocument(*lsp.DidSaveTextDocumentParams) error
 	Initialize(*lsp.InitializeParams) (*lsp.InitializeResult, error)
 	Shutdown() error
 	SemanticTokens(*lsp.SemanticTokensParams) (*lsp.SemanticTokens, error)
@@ -43,6 +44,10 @@ func (s *UnimplementedLanguageServer) DidCloseTextDocument(*lsp.DidCloseTextDocu
 }
 
 func (s *UnimplementedLanguageServer) DidChangeTextDocument(*lsp.DidChangeTextDocumentParams) error {
+	return ErrNotImplemented
+}
+
+func (s *UnimplementedLanguageServer) DidSaveTextDocument(*lsp.DidSaveTextDocumentParams) error {
 	return ErrNotImplemented
 }
 
@@ -98,6 +103,13 @@ func LanguageServerHandle(s LanguageServer, method string, payloadBytes []byte) 
 			return nil, errors.Wrap(err, "unmarshal payload")
 		}
 		return nil, s.DidChangeTextDocument(&payload)
+
+	case "textDocument/didSave":
+		var payload lsp.DidSaveTextDocumentParams
+		if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+			return nil, errors.Wrap(err, "unmarshal payload")
+		}
+		return nil, s.DidSaveTextDocument(&payload)
 
 	case "initialize":
 		var payload lsp.InitializeParams

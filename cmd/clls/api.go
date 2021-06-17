@@ -1,16 +1,13 @@
 package main
 
 import (
-	"io/ioutil"
-	"path/filepath"
-	"sort"
-	"strings"
+	"encoding/base64"
 
 	"github.com/clls-dev/clls/pkg/clls"
 	"github.com/clls-dev/clls/pkg/lsp"
-	"github.com/clls-dev/clls/pkg/lsph"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
+	"golang.org/x/crypto/sha3"
 )
 
 func (s *server) Initialize(*lsp.InitializeParams) (*lsp.InitializeResult, error) {
@@ -31,48 +28,94 @@ func (s *server) Initialize(*lsp.InitializeParams) (*lsp.InitializeResult, error
 	}, nil
 }
 
+func hashString(s string) string {
+	h := sha3.New256()
+	if _, err := h.Write([]byte(s)); err != nil {
+		panic(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+}
+
+func newDocumentData(text string) *documentData {
+	return &documentData{
+		content:     text,
+		contentHash: hashString(text),
+	}
+}
+
 func (s *server) DidOpenTextDocument(params *lsp.DidOpenTextDocumentParams) error {
-	s.docs[params.TextDocument.URI] = params.TextDocument.Text
+	docData := newDocumentData(params.TextDocument.Text)
+	if pulled, ok := s.cache.pull(docData.contentHash); ok {
+		s.openedDocs[params.TextDocument.URI] = pulled
+		return nil
+	}
+	s.openedDocs[params.TextDocument.URI] = newDocumentData(params.TextDocument.Text)
 	return nil
 }
 
+// This only supports full file changes
 func (s *server) DidChangeTextDocument(params *lsp.DidChangeTextDocumentParams) error {
 	if len(params.ContentChanges) == 0 {
 		return nil
 	}
-	s.docs[params.TextDocument.URI] = params.ContentChanges[0].Text
+
+	docData := newDocumentData(params.ContentChanges[0].Text)
+
+	if edd, ok := s.openedDocs[params.TextDocument.URI]; ok && edd.contentHash == docData.contentHash {
+		return nil // data didn't change
+	}
+
+	odd, ok := s.openedDocs[params.TextDocument.URI]
+	if !ok {
+		return errors.New("document not opened")
+	}
+
+	delete(s.openedDocs, params.TextDocument.URI)
+	s.cache.put(odd)
+
+	if pulled, ok := s.cache.pull(docData.contentHash); ok {
+		s.openedDocs[params.TextDocument.URI] = pulled
+		return nil
+	}
+
+	s.openedDocs[params.TextDocument.URI] = docData
 	return nil
 }
 
 func (s *server) DidCloseTextDocument(params *lsp.DidCloseTextDocumentParams) error {
-	delete(s.docs, params.TextDocument.URI)
+	dd, ok := s.openedDocs[params.TextDocument.URI]
+	if !ok {
+		return nil
+	}
+	delete(s.openedDocs, params.TextDocument.URI)
+	s.cache.put(dd)
 	return nil
 }
 
 func (s *server) Rename(params *lsp.RenameParams) (*lsp.WorkspaceEdit, error) {
-	uriStr := params.TextDocument.URI
-	s.l.Debug("textDocument/rename " + uriStr)
-	if !strings.HasPrefix(uriStr, fileURIPrefix) {
-		return nil, errors.New("textDocument.uri is not a file uri")
-	}
-	pathStr := strings.TrimPrefix(uriStr, fileURIPrefix)
-	dirname := filepath.Dir(pathStr)
-	filename := filepath.Base(pathStr)
-
-	mod, err := s.loadCLVM(filename, dirname, uriStr)
-	if err != nil {
-		return nil, errors.Wrap(err, "parse module")
-	}
-
 	p := params.Position
 	line := int(p.Line)
 	char := int(p.Character)
 	newName := params.NewName
 
-	ss := mod.Symbols(s.l)
-	s.l.Debug("got symbols", zap.Any("ss", ss))
+	var syms []*clls.Symbol
+	if d, ok := s.openedDocs[params.TextDocument.URI]; ok && d.generatedSymbols {
+		syms = d.symbols
+	} else {
+		mod, err := s.loadCLVM(params.TextDocument.URI)
+		if err != nil {
+			return nil, errors.Wrap(err, "parse module")
+		}
 
-	for _, s := range ss {
+		syms = mod.Symbols(s.l)
+	}
+
+	if d, ok := s.openedDocs[params.TextDocument.URI]; ok {
+		d.symbols = syms
+		d.generatedSymbols = true
+	}
+
+	for _, s := range syms {
 		for _, st := range s.Tokens() {
 			if st.Line != line {
 				continue
@@ -99,21 +142,10 @@ func (s *server) Rename(params *lsp.RenameParams) (*lsp.WorkspaceEdit, error) {
 
 func (s *server) DocumentFormatting(params *lsp.DocumentFormattingParams) ([]lsp.TextEdit, error) {
 	uriStr := params.TextDocument.URI
-	s.l.Debug("textDocument/formatting " + uriStr)
-	if !strings.HasPrefix(uriStr, fileURIPrefix) {
-		return nil, errors.New("textDocument.uri is not a file uri")
-	}
-	pathStr := strings.TrimPrefix(uriStr, fileURIPrefix)
-	s.l.Debug("parsed uri", zap.String("path", pathStr))
-	fileStr := ""
-	if s, ok := s.docs[uriStr]; ok {
-		fileStr = s
-	} else {
-		b, err := ioutil.ReadFile(pathStr)
-		if err != nil {
-			return nil, errors.Wrap(err, "read file")
-		}
-		fileStr = string(b)
+
+	fileStr, err := s.readFile(uriStr)
+	if err != nil {
+		return nil, errors.Wrap(err, "read file")
 	}
 
 	newText, linesCount, err := clls.Prettify(s.l, &params.Options, fileStr, uriStr)
@@ -131,150 +163,25 @@ func (s *server) DocumentFormatting(params *lsp.DocumentFormattingParams) ([]lsp
 }
 
 func (s *server) SemanticTokens(params *lsp.SemanticTokensParams) (*lsp.SemanticTokens, error) {
-	uriStr := params.TextDocument.URI
-	s.l.Debug("textDocument/formatting " + uriStr)
-	if !strings.HasPrefix(uriStr, fileURIPrefix) {
-		return nil, errors.New("textDocument.uri is not a file uri")
+	if d, ok := s.openedDocs[params.TextDocument.URI]; ok && d.generatedTokens {
+		return &lsp.SemanticTokens{Data: d.semanticTokens}, nil
 	}
-	pathStr := strings.TrimPrefix(uriStr, fileURIPrefix)
-	s.l.Debug("parsed uri", zap.String("path", pathStr))
-	dirname := filepath.Dir(pathStr)
-	filename := filepath.Base(pathStr)
-	mod, err := s.loadCLVM(filename, dirname, uriStr)
+
+	mod, err := s.loadCLVM(params.TextDocument.URI)
 	if err != nil {
 		return nil, errors.Wrap(err, "parse module")
 	}
-	//l.Debug("parsed mod", zap.Any("val", mod))
 
-	inserts := []insert(nil)
-
-	if mod.IsMod {
-		inserts = append(inserts, insert{Kind: "keyword", Token: mod.ModToken})
-		if mod.Args != nil {
-			inserts = insertParamsTokens(inserts, mod.Args)
-		}
+	data, err := mod.SemanticTokens(s.l)
+	if err != nil {
+		return nil, errors.Wrap(err, "semantic tokens from module")
 	}
 
-	if mod.Constants != nil {
-		for _, c := range mod.Constants {
-			if c.Token != nil {
-				inserts = append(inserts, insert{Kind: "keyword", Token: c.Token})
-			}
-			if t, ok := c.Name.(*clls.Token); ok && t != nil {
-				inserts = append(inserts, insert{Kind: "variable", Modifiers: []string{"readonly"}, Token: t})
-			}
-			inserts = insertBody(inserts, c.Value, clls.BuiltinFuncsByName)
-		}
-	}
+	s.l.Debug("generated semantic tokens", zap.Int("count", len(data)/5))
 
-	for _, t := range mod.Comments {
-		inserts = append(inserts, insert{Kind: "comment", Token: t})
-	}
-
-	for _, incl := range mod.Includes {
-		inserts = append(inserts, insert{Kind: "keyword", Token: incl.Token})
-		if t, ok := incl.Value.(*clls.Token); ok && t != nil {
-			inserts = append(inserts, insert{Kind: "string", Token: t})
-		}
-	}
-
-	allFuncs := map[string]*clls.Function{}
-	for k, v := range clls.BuiltinFuncsByName {
-		allFuncs[k] = v
-	}
-	for k, v := range mod.FunctionsByName {
-		allFuncs[k] = v
-	}
-	if len(mod.Functions) > 0 {
-		for _, f := range mod.Functions {
-			inserts = append(inserts, insert{Kind: "keyword", Token: f.KeywordToken})
-			if f.Name != nil {
-				inserts = append(inserts, insert{Kind: "function", Token: f.Name})
-			}
-			if f.Params != nil {
-				inserts = insertParamsTokens(inserts, f.Params)
-			}
-			inserts = insertBody(inserts, f.Body, allFuncs)
-		}
-	}
-
-	if mod.Main != nil {
-		inserts = insertBody(inserts, mod.Main, allFuncs)
-	}
-
-	data := []lsp.UInteger(nil)
-
-	if len(inserts) != 0 {
-		ninserts := inserts
-		inserts := []insert(nil)
-		for _, i := range ninserts {
-			if i.Token != nil {
-				inserts = append(inserts, i)
-			}
-		}
-
-		sort.Slice(inserts, func(i, j int) bool {
-			a := inserts[i]
-			b := inserts[j]
-			ai := 0
-			if a.Token != nil {
-				ai = a.Token.Index
-			}
-			bi := 0
-			if b.Token != nil {
-				bi = b.Token.Index
-			}
-			return ai < bi
-		})
-
-		ltoks := lsph.SemanticTokenSlice{}
-
-		t := inserts[0].Token
-		if t != nil {
-			tt, tm, err := tokenInfo(s.l, inserts[0].Kind, inserts[0].Modifiers, &lsp.StandardSemanticTokensLegend)
-			if err != nil {
-				panic(err)
-			}
-			ltoks = append(ltoks, lsph.SemanticToken{
-				DeltaLine:      lsp.UInteger(t.Line),
-				DeltaStartChar: lsp.UInteger(t.StartChar),
-				Length:         lsp.UInteger(len(t.Text)),
-				TokenType:      tt,
-				TokenModifiers: tm,
-			})
-
-			for i := 1; i < len(inserts); i++ {
-				prev := inserts[i-1]
-				in := inserts[i]
-				t := in.Token
-				pt := prev.Token
-				deltaLine := t.Line - pt.Line
-				if deltaLine < 0 {
-					panic("negative line delta")
-				}
-				deltaStartChar := t.StartChar
-				if deltaLine == 0 {
-					deltaStartChar = t.StartChar - pt.StartChar
-				}
-				if deltaLine < 0 {
-					panic("negative start char delta")
-				}
-
-				tt, tm, err := tokenInfo(s.l, in.Kind, in.Modifiers, &lsp.StandardSemanticTokensLegend)
-				if err != nil {
-					panic(err)
-				}
-				ltoks = append(ltoks, lsph.SemanticToken{
-					DeltaLine:      lsp.UInteger(deltaLine),
-					DeltaStartChar: lsp.UInteger(deltaStartChar),
-					Length:         lsp.UInteger(len(t.Text)),
-					TokenType:      tt,
-					TokenModifiers: tm,
-				})
-			}
-
-			data = ltoks.Flat()
-		}
+	if d, ok := s.openedDocs[params.TextDocument.URI]; ok {
+		d.semanticTokens = data
+		d.generatedTokens = true
 	}
 
 	return &lsp.SemanticTokens{Data: data}, nil
@@ -292,4 +199,8 @@ func (s *server) Exit() error {
 
 func (s *server) Initialized(*lsp.InitializedParams) error {
 	return nil
+}
+
+func (s *server) DidSaveTextDocument(*lsp.DidSaveTextDocumentParams) error {
+	return nil // this is to gracefully ignore the event
 }

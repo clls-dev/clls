@@ -18,11 +18,18 @@ var (
 	CommandName = "clls"
 )
 
+func readFileToString(p string) (string, error) {
+	b, err := ioutil.ReadFile(p)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 func Command(rootName string) (*ffcli.Command, *string) {
 	flagSet := flag.NewFlagSet(fmt.Sprintf("%s %s", rootName, CommandName), flag.ExitOnError)
 
 	ppFlag := flagSet.String("pp", "", `--pp "(mod () ("Hello world!"))"`)
-	//lispFlag := flagSet.Bool("lisp", false, "--lisp: outputs clvm")
 
 	s := ""
 	r := &s
@@ -65,13 +72,7 @@ func Command(rootName string) (*ffcli.Command, *string) {
 				if filePath == "" {
 					return errors.New("missing file path argument")
 				}
-				nmod, err := LoadCLVM(l, filePath, "file://"+filePath, func(p string) (string, error) {
-					b, err := ioutil.ReadFile(p)
-					if err != nil {
-						return "", err
-					}
-					return string(b), nil
-				})
+				nmod, err := LoadCLVM(l, "file://"+filePath, readFileToString)
 				if err != nil {
 					return errors.Wrap(err, "parse modules")
 				}
@@ -92,11 +93,13 @@ func Command(rootName string) (*ffcli.Command, *string) {
 	}, r
 }
 
+const fileURIPrefix = "file://"
+
 // TODO: replace p with documentURI
-func LoadCLVM(l *zap.Logger, p string, documentURI lsp.DocumentURI, readFile func(string) (string, error)) (*Module, error) {
-	f, err := readFile(p)
+func LoadCLVM(l *zap.Logger, documentURI lsp.DocumentURI, readFile func(string) (string, error)) (*Module, error) {
+	f, err := readFile(documentURI)
 	if err != nil {
-		return nil, errors.Wrap(err, fmt.Sprintf("read file '%s'", p))
+		return nil, errors.Wrap(err, "read file")
 	}
 
 	tokens := []*Token(nil)
@@ -116,7 +119,7 @@ func LoadCLVM(l *zap.Logger, p string, documentURI lsp.DocumentURI, readFile fun
 	}
 
 	if *errptr != nil {
-		return nil, errors.Wrap(*errptr, fmt.Sprintf("tokenize file '%s'", p))
+		return nil, errors.Wrap(*errptr, "tokenize")
 	}
 
 	mods, err := parseModules(l, ast, documentURI, readFile, tokens)
@@ -131,8 +134,8 @@ func LoadCLVM(l *zap.Logger, p string, documentURI lsp.DocumentURI, readFile fun
 
 }
 
-func LoadCLVMFromStrings(l *zap.Logger, p string, documentURI lsp.DocumentURI, files map[string]string) (*Module, error) {
-	return LoadCLVM(l, p, documentURI, func(p string) (string, error) {
+func LoadCLVMFromStrings(l *zap.Logger, p string, documentURI lsp.DocumentURI, files map[lsp.DocumentURI]string) (*Module, error) {
+	return LoadCLVM(l, documentURI, func(p lsp.DocumentURI) (string, error) {
 		f, ok := files[p]
 		if !ok {
 			return "", fmt.Errorf("unknown file '%s'", p)

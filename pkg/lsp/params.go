@@ -135,3 +135,11 @@ type TextDocumentItem struct {
 	// The content of the opened text document.
 	Text string `json:"text"`
 }
+
+type DidSaveTextDocumentParams struct {
+	// The document that was saved.
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+
+	// Optional the content when saved. Depends on the includeText value when the save notification was requested.
+	Text string `json:"text,omitempty"`
+}

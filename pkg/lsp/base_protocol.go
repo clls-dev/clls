@@ -28,7 +28,7 @@ type RawRequestMessage struct {
 }
 type ResponseMessage struct {
 	Message
-	ID     IntegerOrString `json:"id"`
+	ID     IntegerOrString `json:"id,omitempty"`
 	Result interface{}     `json:"result,omitempty"`
 	Error  *ResponseError  `json:"error,omitempty"`
 }

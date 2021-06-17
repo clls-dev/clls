@@ -26,6 +26,7 @@ var defs = []methodDefinition{
 	{"DidOpenTextDocument", "textDocument/didOpen", "lsp.DidOpenTextDocumentParams", "", true},
 	{"DidCloseTextDocument", "textDocument/didClose", "lsp.DidCloseTextDocumentParams", "", true},
 	{"DidChangeTextDocument", "textDocument/didChange", "lsp.DidChangeTextDocumentParams", "", true},
+	{"DidSaveTextDocument", "textDocument/didSave", "lsp.DidSaveTextDocumentParams", "", true},
 
 	// Calls
 	{"Initialize", "initialize", "lsp.InitializeParams", "lsp.InitializeResult", false},

@@ -40,7 +40,6 @@ func makeSymbolsMap(l *zap.Logger, cb *CodeBody) map[*Token][]*Token {
 	m := map[*Token][]*Token{}
 	switch cb.Kind {
 	case CallBodyKind, FuncVarBodyKind:
-		l.Debug("found func token", zap.Any("token", cb.Token))
 		if cb.Token == nil {
 			panic("found call body kind with no token")
 		}
@@ -50,11 +49,9 @@ func makeSymbolsMap(l *zap.Logger, cb *CodeBody) map[*Token][]*Token {
 		m[cb.Function] = append(m[cb.Function], cb.Token)
 
 	case ConstBodyKind:
-		l.Debug("found func token", zap.Any("token", cb.Token))
 		m[cb.Constant.Name.(*Token)] = append(m[cb.Constant.Name.(*Token)], cb.Token)
 
 	case VarBodyKind:
-		l.Debug("found var token", zap.Any("token", cb.Token))
 		m[cb.Var] = append(m[cb.Var], cb.Token)
 	}
 	for _, c := range cb.Children {
@@ -96,7 +93,6 @@ func (m *Module) Symbols(l *zap.Logger) []*Symbol {
 			vts[k] = v
 		}
 		bodySymbols := makeSymbolsMap(l, f.Body)
-		l.Debug("found var tokens", zap.Any("vts", vts), zap.Any("bvts", len(bodySymbols)))
 		for k, toks := range bodySymbols {
 			syms[k] = append(syms[k], toks...)
 		}
@@ -186,7 +182,7 @@ func parseModules(l *zap.Logger, tree *ASTNode, documentURI lsp.DocumentURI, rea
 						var err error
 						dir := filepath.Dir(strings.TrimPrefix(documentURI, "file://"))
 						uri := "file://" + filepath.Join(dir, filePath)
-						if fincl.Module, err = LoadCLVM(l, filePath, uri, readFile); err != nil {
+						if fincl.Module, err = LoadCLVM(l, uri, readFile); err != nil {
 							fincl.Module = nil
 							fincl.LoadError = err
 						}
