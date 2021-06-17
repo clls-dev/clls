@@ -4,6 +4,7 @@
 	"author": "Microsoft Corporation",
 	"license": "MIT",
 	"version": "1.0.5",
+	"icon": "favicon.ico",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Microsoft/vscode-extension-samples"
