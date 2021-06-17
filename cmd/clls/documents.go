@@ -46,6 +46,9 @@ func (dc *documentCache) put(dd *documentData) bool {
 	}
 	entry := &documentCacheEntry{data: dd}
 	dc.sorted = append([]*documentCacheEntry{entry}, dc.sorted...)
+	for i := 1; i < len(dc.sorted); i++ {
+		dc.sorted[i].index = i
+	}
 	dc.byHash[dd.contentHash] = entry
 	return true
 }
