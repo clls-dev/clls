@@ -47,21 +47,7 @@ func (ft *FileTransport) Recv() (*lsp.RawRequestMessage, error) {
 }
 
 func (ft *FileTransport) Send(res *lsp.ResponseMessage) error {
-	if res.Message.Version == "" {
-		res.Message.Version = "2.0"
-	}
-	replyBytes, err := json.Marshal(res)
-	if err != nil {
-		return errors.Wrap(err, "marshal reply")
-	}
-	cl := len(replyBytes)
-	if err := (&Header{ContentLength: &cl}).Write(ft.l, ft.out); err != nil {
-		return errors.Wrap(err, "write header")
-	}
-	if _, err := os.Stdout.Write(replyBytes); err != nil {
-		return errors.Wrap(err, "write message")
-	}
-	return nil
+	return Reply(ft.l, ft.out, res)
 }
 
 func Reply(l *zap.Logger, w io.Writer, res *lsp.ResponseMessage) error {
@@ -73,10 +59,10 @@ func Reply(l *zap.Logger, w io.Writer, res *lsp.ResponseMessage) error {
 		return errors.Wrap(err, "marshal reply")
 	}
 	cl := len(replyBytes)
-	if err := (&Header{ContentLength: &cl}).Write(l, os.Stdout); err != nil {
+	if err := (&Header{ContentLength: &cl}).Write(l, w); err != nil {
 		return errors.Wrap(err, "write header")
 	}
-	if _, err := os.Stdout.Write(replyBytes); err != nil {
+	if _, err := w.Write(replyBytes); err != nil {
 		return errors.Wrap(err, "write message")
 	}
 	return nil
