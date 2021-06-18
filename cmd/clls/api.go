@@ -11,21 +11,24 @@ import (
 )
 
 func (s *server) Initialize(*lsp.InitializeParams) (*lsp.InitializeResult, error) {
+	caps := lsp.ServerCapabilities{
+		TextDocumentSync: lsp.Full,
+		SemanticTokensProvider: lsp.SemanticTokensOptions{
+			Legend: lsp.StandardSemanticTokensLegend,
+			Full:   true,
+		},
+		DocumentFormattingProvider: true,
+		RenameProvider:             true,
+		DocumentHighlightProvider:  true,
+	}
+	s.l.Debug("server initialized", zap.Any("capabilities", caps))
 	return &lsp.InitializeResult{
 		ServerInfo: &lsp.InitializeResultServerInfo{
 			Name:    "clls",
 			Version: "0.1.0",
 		},
-		Capabilities: &lsp.ServerCapabilities{
-			TextDocumentSync: lsp.Full,
-			SemanticTokensProvider: lsp.SemanticTokensOptions{
-				Legend: lsp.StandardSemanticTokensLegend,
-				Full:   true,
-			},
-			DocumentFormattingProvider: true,
-			RenameProvider:             true,
-		},
-	}, nil
+		Capabilities: &caps}, nil
+
 }
 
 func hashString(s string) string {
@@ -39,7 +42,7 @@ func hashString(s string) string {
 func newDocumentData(text string) *documentData {
 	return &documentData{
 		content:     text,
-		contentHash: hashString(text),
+		contentHash: hashString(text), // FIXME, if an include changes, the cache will be bad
 	}
 }
 
@@ -203,4 +206,50 @@ func (s *server) Initialized(*lsp.InitializedParams) error {
 
 func (s *server) DidSaveTextDocument(*lsp.DidSaveTextDocumentParams) error {
 	return nil // this is to gracefully ignore the event
+}
+
+func (s *server) DocumentHighlight(params *lsp.DocumentHighlightParams) ([]lsp.DocumentHighlight, error) {
+	p := params.Position
+	line := int(p.Line)
+	char := int(p.Character)
+
+	var syms []*clls.Symbol
+	if d, ok := s.openedDocs[params.TextDocument.URI]; ok && d.generatedSymbols {
+		syms = d.symbols
+	} else {
+		mod, err := s.loadCLVM(params.TextDocument.URI)
+		if err != nil {
+			return nil, errors.Wrap(err, "parse module")
+		}
+
+		syms = mod.Symbols(s.l)
+	}
+
+	if d, ok := s.openedDocs[params.TextDocument.URI]; ok {
+		d.symbols = syms
+		d.generatedSymbols = true
+	}
+
+	for _, sym := range syms {
+		for _, st := range sym.Tokens() {
+			if st.Line != line {
+				continue
+			}
+			if char < st.StartChar || st.EndChar() < char {
+				continue
+			}
+
+			r := []lsp.DocumentHighlight(nil)
+			for _, t := range sym.Tokens() {
+				if t.DocumentURI != params.TextDocument.URI {
+					continue
+				}
+				r = append(r, lsp.DocumentHighlight{Range: t.Range(), Kind: &lsp.Text})
+			}
+			s.l.Debug("will send", zap.Any("r", r))
+			return r, nil
+		}
+	}
+
+	return nil, errors.New("symbol not found")
 }

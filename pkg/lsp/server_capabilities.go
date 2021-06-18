@@ -47,6 +47,16 @@ type ServerCapabilities struct {
 	  Type must be nil, bool or DocumentSymbolOptions
 	*/
 	DocumentSymbolProvider interface{} `json:"documentSymbolProvider,omitempty"`
+
+	/*
+		Blabla
+	*/
+	ReferencesProvider interface{} `json:"referencesProvider,omitempty"`
+
+	/*
+	 Blabla
+	*/
+	DocumentHighlightProvider interface{} `json:"documentHighlightProvider,omitempty"`
 }
 
 type DocumentFormattingOptions struct {

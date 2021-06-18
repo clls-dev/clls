@@ -21,6 +21,8 @@ type LanguageServer interface {
 	SemanticTokens(*lsp.SemanticTokensParams) (*lsp.SemanticTokens, error)
 	DocumentFormatting(*lsp.DocumentFormattingParams) ([]lsp.TextEdit, error)
 	Rename(*lsp.RenameParams) (*lsp.WorkspaceEdit, error)
+	References(*lsp.ReferenceParams) ([]lsp.Location, error)
+	DocumentHighlight(*lsp.DocumentHighlightParams) ([]lsp.DocumentHighlight, error)
 }
 
 type UnimplementedLanguageServer struct{}
@@ -68,6 +70,14 @@ func (s *UnimplementedLanguageServer) DocumentFormatting(*lsp.DocumentFormatting
 }
 
 func (s *UnimplementedLanguageServer) Rename(*lsp.RenameParams) (*lsp.WorkspaceEdit, error) {
+	return nil, ErrNotImplemented
+}
+
+func (s *UnimplementedLanguageServer) References(*lsp.ReferenceParams) ([]lsp.Location, error) {
+	return nil, ErrNotImplemented
+}
+
+func (s *UnimplementedLanguageServer) DocumentHighlight(*lsp.DocumentHighlightParams) ([]lsp.DocumentHighlight, error) {
 	return nil, ErrNotImplemented
 }
 
@@ -141,6 +151,20 @@ func LanguageServerHandle(s LanguageServer, method string, payloadBytes []byte) 
 			return nil, errors.Wrap(err, "unmarshal payload")
 		}
 		return s.Rename(&payload)
+
+	case "textDocument/references":
+		var payload lsp.ReferenceParams
+		if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+			return nil, errors.Wrap(err, "unmarshal payload")
+		}
+		return s.References(&payload)
+
+	case "textDocument/documentHighlight":
+		var payload lsp.DocumentHighlightParams
+		if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+			return nil, errors.Wrap(err, "unmarshal payload")
+		}
+		return s.DocumentHighlight(&payload)
 
 	}
 	return nil, ErrUnknownMethod

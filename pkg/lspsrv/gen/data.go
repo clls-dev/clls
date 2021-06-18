@@ -35,6 +35,8 @@ var defs = []methodDefinition{
 	{"SemanticTokens", "textDocument/semanticTokens/full", "lsp.SemanticTokensParams", "lsp.SemanticTokens", false},
 	{"DocumentFormatting", "textDocument/formatting", "lsp.DocumentFormattingParams", "[]lsp.TextEdit", false},
 	{"Rename", "textDocument/rename", "lsp.RenameParams", "lsp.WorkspaceEdit", false},
+	{"References", "textDocument/references", "lsp.ReferenceParams", "[]lsp.Location", false},
+	{"DocumentHighlight", "textDocument/documentHighlight", "lsp.DocumentHighlightParams", "[]lsp.DocumentHighlight", false},
 }
 
 func (d *methodDefinition) fullRet() string {

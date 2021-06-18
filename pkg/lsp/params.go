@@ -143,3 +143,61 @@ type DidSaveTextDocumentParams struct {
 	// Optional the content when saved. Depends on the includeText value when the save notification was requested.
 	Text string `json:"text,omitempty"`
 }
+
+type ReferenceParams struct {
+	TextDocumentPositionParams
+	WorkDoneProgressParams
+	PartialResultParams
+	Context ReferenceContext `json:"context"`
+}
+
+type ReferenceContext struct {
+	/*
+		Include the declaration of the current symbol.
+	*/
+	IncludeDeclaration bool `json:"includeDeclaration"`
+}
+
+type DocumentHighlightParams struct {
+	TextDocumentPositionParams
+	WorkDoneProgressParams
+	PartialResultParams
+}
+
+/**
+ * A document highlight is a range inside a text document which deserves
+ * special attention. Usually a document highlight is visualized by changing
+ * the background color of its range.
+ *
+ */
+type DocumentHighlight struct {
+	/**
+	 * The range this highlight applies to.
+	 */
+	Range Range `json:"range"`
+
+	/**
+	 * The highlight kind, default is DocumentHighlightKind.Text.
+	 */
+	Kind *DocumentHighlightKind `json:"kind,omitempty"`
+}
+
+/**
+ * A document highlight kind.
+ */
+type DocumentHighlightKind int
+
+var (
+	/**
+	 * A textual occurrence.
+	 */
+	Text = DocumentHighlightKind(1)
+	/**
+	 * Read-access of a symbol, like reading a variable.
+	 */
+	Read = DocumentHighlightKind(2)
+	/**
+	 * Write-access of a symbol, like writing to a variable.
+	 */
+	Write = DocumentHighlightKind(3)
+)

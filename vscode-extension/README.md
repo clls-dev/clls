@@ -20,9 +20,10 @@ You need the `clls` program in your `$PATH`
 ## Functionality
 
 This Language Server works for .clvm files. It has the following language features:
-- Semantic tokens (syntax highlighting)
+- Semantic tokens (syntax coloring)
 - Formatting (very rough for now)
 - Rename (not across includes yet as it would require to parse all .clvm files in the project and it's not practical for now)
+- Document highlight (highlights the symbol under the cursor throughout the document)
 
 ## Donate
 

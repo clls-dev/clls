@@ -50,5 +50,5 @@ type PartialResultParams struct {
 		An optional token that a server can use to report partial results (e.g.
 		streaming) to the client.
 	*/
-	PartialResultToken *ProgressToken `json:"textDocument,omitempty"`
+	PartialResultToken *ProgressToken `json:"partialResultToken,omitempty"`
 }
