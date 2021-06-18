@@ -3,7 +3,7 @@
 	"description": "Chialisp language support",
 	"author": "Microsoft Corporation",
 	"license": "MIT",
-	"version": "1.0.5",
+	"version": "1.0.6",
 	"icon": "favicon.ico",
 	"repository": {
 		"type": "git",
