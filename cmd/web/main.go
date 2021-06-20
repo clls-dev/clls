@@ -8,6 +8,8 @@ import (
 
 	"github.com/clls-dev/clls/pkg/clls"
 	"github.com/clls-dev/clls/pkg/examples"
+	lsp "go.lsp.dev/protocol"
+	"go.lsp.dev/uri"
 	"go.uber.org/zap"
 )
 
@@ -44,13 +46,13 @@ func prettifyLisp(a js.Value, b []js.Value) interface{} {
 }
 
 func semanticTokens(a js.Value, b []js.Value) interface{} {
-	sources := map[string]string{"file://main.clvm": b[0].String()}
+	sources := map[lsp.DocumentURI]string{uri.New("file://main.clvm"): b[0].String()}
 	exs, err := examples.F.ReadDir(".")
 	if err == nil {
 		for _, e := range exs {
 			b, err := examples.F.ReadFile(e.Name())
 			if err == nil {
-				sources["file://"+e.Name()] = string(b)
+				sources[uri.New("file://"+e.Name())] = string(b)
 			}
 		}
 	}
@@ -79,20 +81,20 @@ func semanticTokens(a js.Value, b []js.Value) interface{} {
 }
 
 func inspect(a js.Value, b []js.Value) interface{} {
-	sources := map[string]string{"file://main.clvm": b[0].String()}
+	sources := map[lsp.DocumentURI]string{uri.New("file://main.clvm"): b[0].String()}
 	exs, err := examples.F.ReadDir(".")
 	if err == nil {
 		for _, e := range exs {
 			b, err := examples.F.ReadFile(e.Name())
 			if err == nil {
-				sources["file://"+e.Name()] = string(b)
+				sources[uri.New("file://"+e.Name())] = string(b)
 			}
 		}
 	}
 
 	l := zap.NewNop()
 
-	mod, err := clls.LoadCLVMFromStrings(l, "file://main.clvm", sources)
+	mod, err := clls.LoadCLVMFromStrings(l, uri.New("file://main.clvm"), sources)
 	if err != nil {
 		return js.ValueOf(err.Error())
 	}

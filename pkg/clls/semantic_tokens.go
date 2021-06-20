@@ -6,12 +6,12 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/clls-dev/clls/pkg/lsp"
 	"github.com/clls-dev/clls/pkg/lsph"
+	lsp "go.lsp.dev/protocol"
 	"go.uber.org/zap"
 )
 
-func (m *Module) SemanticTokens(l *zap.Logger) ([]lsp.UInteger, error) {
+func (m *Module) SemanticTokens(l *zap.Logger) ([]uint32, error) {
 	inserts := []insert(nil)
 
 	if m.IsMod {
@@ -27,7 +27,7 @@ func (m *Module) SemanticTokens(l *zap.Logger) ([]lsp.UInteger, error) {
 				inserts = append(inserts, insert{Kind: "keyword", Token: c.Token})
 			}
 			if t, ok := c.Name.(*Token); ok && t != nil {
-				inserts = append(inserts, insert{Kind: "variable", Modifiers: []string{"readonly"}, Token: t})
+				inserts = append(inserts, insert{Kind: "variable", Modifiers: []lsp.SemanticTokenModifiers{lsp.SemanticTokenModifierReadonly}, Token: t})
 			}
 			inserts = insertBody(inserts, c.Value, BuiltinFuncsByName)
 		}
@@ -68,7 +68,7 @@ func (m *Module) SemanticTokens(l *zap.Logger) ([]lsp.UInteger, error) {
 		inserts = insertBody(inserts, m.Main, allFuncs)
 	}
 
-	data := []lsp.UInteger(nil)
+	data := []uint32(nil)
 
 	if len(inserts) != 0 {
 		ninserts := inserts
@@ -97,14 +97,14 @@ func (m *Module) SemanticTokens(l *zap.Logger) ([]lsp.UInteger, error) {
 
 		t := inserts[0].Token
 		if t != nil {
-			tt, tm, err := tokenInfo(l, inserts[0].Kind, inserts[0].Modifiers, &lsp.StandardSemanticTokensLegend)
+			tt, tm, err := tokenInfo(l, inserts[0].Kind, inserts[0].Modifiers, &StandardSemanticTokensLegend)
 			if err != nil {
 				panic(err)
 			}
 			ltoks = append(ltoks, lsph.SemanticToken{
-				DeltaLine:      lsp.UInteger(t.Line),
-				DeltaStartChar: lsp.UInteger(t.StartChar),
-				Length:         lsp.UInteger(len(t.Text)),
+				DeltaLine:      uint32(t.Line),
+				DeltaStartChar: uint32(t.StartChar),
+				Length:         uint32(len(t.Text)),
 				TokenType:      tt,
 				TokenModifiers: tm,
 			})
@@ -126,14 +126,14 @@ func (m *Module) SemanticTokens(l *zap.Logger) ([]lsp.UInteger, error) {
 					panic("negative start char delta")
 				}
 
-				tt, tm, err := tokenInfo(l, in.Kind, in.Modifiers, &lsp.StandardSemanticTokensLegend)
+				tt, tm, err := tokenInfo(l, in.Kind, in.Modifiers, &StandardSemanticTokensLegend)
 				if err != nil {
 					panic(err)
 				}
 				ltoks = append(ltoks, lsph.SemanticToken{
-					DeltaLine:      lsp.UInteger(deltaLine),
-					DeltaStartChar: lsp.UInteger(deltaStartChar),
-					Length:         lsp.UInteger(len(t.Text)),
+					DeltaLine:      uint32(deltaLine),
+					DeltaStartChar: uint32(deltaStartChar),
+					Length:         uint32(len(t.Text)),
 					TokenType:      tt,
 					TokenModifiers: tm,
 				})
@@ -146,7 +146,54 @@ func (m *Module) SemanticTokens(l *zap.Logger) ([]lsp.UInteger, error) {
 	return data, nil
 }
 
-func tokenInfo(l *zap.Logger, kind string, mods []string, legend *lsp.SemanticTokensLegend) (lsp.UInteger, lsp.UInteger, error) {
+var StandardSemanticTokenTypes = []lsp.SemanticTokenTypes{
+	"namespace",
+	/**
+	 * Represents a generic type. Acts as a fallback for types which
+	 * can't be mapped to a specific type like class or enum.
+	 */
+	"type",
+	"class",
+	"enum",
+	"interface",
+	"struct",
+	"typeParameter",
+	"parameter",
+	"variable",
+	"property",
+	"enumMember",
+	"event",
+	"function",
+	"method",
+	"macro",
+	"keyword",
+	"modifier",
+	"comment",
+	"string",
+	"number",
+	"regexp",
+	"operator",
+}
+
+var StandardSemanticTokenModifiers = []lsp.SemanticTokenModifiers{
+	"declaration",
+	"definition",
+	"readonly",
+	"static",
+	"deprecated",
+	"abstract",
+	"async",
+	"modification",
+	"documentation",
+	"defaultLibrary",
+}
+
+var StandardSemanticTokensLegend = lsp.SemanticTokensLegend{
+	TokenTypes:     StandardSemanticTokenTypes,
+	TokenModifiers: StandardSemanticTokenModifiers,
+}
+
+func tokenInfo(l *zap.Logger, kind lsp.SemanticTokenTypes, mods []lsp.SemanticTokenModifiers, legend *lsp.SemanticTokensLegend) (uint32, uint32, error) {
 	tt := -1
 	for i, v := range legend.TokenTypes {
 		if v == kind {
@@ -157,7 +204,7 @@ func tokenInfo(l *zap.Logger, kind string, mods []string, legend *lsp.SemanticTo
 	if tt == -1 {
 		return 0, 0, fmt.Errorf("unknown token type '%s'", kind)
 	}
-	tm := lsp.UInteger(0)
+	tm := uint32(0)
 	for _, m := range mods {
 		mv := -1
 		for i, v := range legend.TokenModifiers {
@@ -169,16 +216,16 @@ func tokenInfo(l *zap.Logger, kind string, mods []string, legend *lsp.SemanticTo
 		if mv == -1 {
 			return 0, 0, fmt.Errorf("unknown token modifier '%s'", m)
 		}
-		tm |= 1 << lsp.UInteger(mv)
+		tm |= 1 << uint32(mv)
 	}
-	return lsp.UInteger(tt), tm, nil
+	return uint32(tt), tm, nil
 }
 
 func insertParamsTokens(inserts []insert, a interface{}) []insert {
 	switch a := a.(type) {
 	case *Token:
 		if a.Value != "." {
-			inserts = append(inserts, insert{Kind: "parameter", Modifiers: []string{"readonly"}, Token: a})
+			inserts = append(inserts, insert{Kind: "parameter", Modifiers: []lsp.SemanticTokenModifiers{lsp.SemanticTokenModifierReadonly}, Token: a})
 		}
 	case *ASTNode:
 		for _, ac := range a.Children {
@@ -201,14 +248,14 @@ func insertBody(inserts []insert, node *CodeBody, funcsByName map[string]*Functi
 		inserts = insertBody(inserts, node.IfBranch, funcsByName)
 		inserts = insertBody(inserts, node.ElseBranch, funcsByName)
 	case CallBodyKind:
-		kind := "function"
-		mods := []string(nil)
+		kind := lsp.SemanticTokenFunction
+		mods := []lsp.SemanticTokenModifiers(nil)
 		if fn, ok := funcsByName[node.Function.Value]; ok && fn.Builtin {
 			switch fn.Name.Value {
 			case "x":
-				kind = "keyword"
+				kind = lsp.SemanticTokenKeyword
 			default:
-				mods = append(mods, "defaultLibrary")
+				mods = append(mods, lsp.SemanticTokenModifierDefaultLibrary)
 			}
 		}
 		if node.Token != nil {
@@ -219,38 +266,37 @@ func insertBody(inserts []insert, node *CodeBody, funcsByName map[string]*Functi
 		}
 	case OperatorBodyKind:
 		if node.Token != nil {
-			inserts = append(inserts, insert{Kind: "operator", Token: node.Token})
+			inserts = append(inserts, insert{Kind: lsp.SemanticTokenOperator, Token: node.Token})
 		}
 		for _, child := range node.Children {
 			inserts = insertBody(inserts, child, funcsByName)
 		}
 	case ConstBodyKind:
 		if node.Token != nil {
-			inserts = append(inserts, insert{Kind: "variable", Modifiers: []string{"readonly"}, Token: node.Token})
+			inserts = append(inserts, insert{Kind: lsp.SemanticTokenVariable, Modifiers: []lsp.SemanticTokenModifiers{lsp.SemanticTokenModifierReadonly}, Token: node.Token})
 		}
 	case VarBodyKind:
 		if node.Token != nil {
-			inserts = append(inserts, insert{Kind: "parameter", Token: node.Token})
+			inserts = append(inserts, insert{Kind: lsp.SemanticTokenParameter, Token: node.Token})
 		}
 	case FuncVarBodyKind:
-		k := "function"
-		mods := []string(nil)
+		k := lsp.SemanticTokenFunction
+		mods := []lsp.SemanticTokenModifiers(nil)
 		if fn, ok := funcsByName[node.Function.Value]; ok && fn.Builtin {
-			k = "function"
-			mods = append(mods, "defaultLibrary")
+			mods = append(mods, lsp.SemanticTokenModifierDefaultLibrary)
 		}
 		if node.Token != nil {
 			inserts = append(inserts, insert{Kind: k, Modifiers: mods, Token: node.Token})
 		}
 	default:
 		if node.Token != nil && node.Token.Value != "." {
-			kind := "string"
+			kind := lsp.SemanticTokenString
 			numberStr := node.Token.Value
 			if len(numberStr) > 0 && numberStr[0] == '-' {
 				numberStr = numberStr[1:]
 			}
 			if i := strings.IndexFunc(numberStr, func(r rune) bool { return !unicode.IsNumber(r) }); i == -1 {
-				kind = "number"
+				kind = lsp.SemanticTokenNumber
 			}
 			inserts = append(inserts, insert{Kind: kind, Token: node.Token})
 		}
@@ -262,7 +308,7 @@ func insertBody(inserts []insert, node *CodeBody, funcsByName map[string]*Functi
 }
 
 type insert struct {
-	Kind      string
-	Modifiers []string
+	Kind      lsp.SemanticTokenTypes
+	Modifiers []lsp.SemanticTokenModifiers
 	Token     *Token
 }

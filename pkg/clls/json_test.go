@@ -5,11 +5,16 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	lsp "go.lsp.dev/protocol"
+	"go.lsp.dev/uri"
 	"go.uber.org/zap"
 )
 
 func TestParseMarshalAndBack(t *testing.T) {
-	mod, err := LoadCLVMFromStrings(zap.NewNop(), "file://main.clvm", map[string]string{"file://main.clvm": file, "file://condition_codes.clvm": ConditionCodes})
+	mod, err := LoadCLVMFromStrings(zap.NewNop(), uri.New("file://main.clvm"), map[lsp.DocumentURI]string{
+		uri.New("file://main.clvm"):            file,
+		uri.New("file://condition_codes.clvm"): ConditionCodes,
+	})
 	require.NoError(t, err)
 
 	t.Log(mod)

@@ -1,13 +1,12 @@
 package main
 
 import (
+	"context"
 	"io/ioutil"
-	"strings"
 
 	"github.com/clls-dev/clls/pkg/clls"
-	"github.com/clls-dev/clls/pkg/lsp"
 	"github.com/clls-dev/clls/pkg/lspsrv"
-	"github.com/pkg/errors"
+	lsp "go.lsp.dev/protocol"
 	"go.uber.org/zap"
 )
 
@@ -23,7 +22,7 @@ type server struct {
 	l *zap.Logger
 }
 
-var _ lspsrv.LanguageServer = (*server)(nil)
+var _ lsp.Server = (*server)(nil)
 
 func newServer(l *zap.Logger) *server {
 	if l == nil {
@@ -31,24 +30,24 @@ func newServer(l *zap.Logger) *server {
 	}
 	return &server{
 		l:          l,
-		openedDocs: map[string]*documentData{},
+		openedDocs: map[lsp.DocumentURI]*documentData{},
 		cache:      newDocumentCache(200),
 	}
 }
 
-func (s *server) loadCLVM(uriStr string) (*clls.Module, error) {
-	if d, ok := s.openedDocs[uriStr]; ok && d.parsedModule {
+func (s *server) loadCLVM(u lsp.DocumentURI) (*clls.Module, error) {
+	if d, ok := s.openedDocs[u]; ok && d.parsedModule {
 		return d.module, nil
 	}
 
-	mod, err := clls.LoadCLVM(s.l, uriStr, s.readFile)
+	mod, err := clls.LoadCLVM(s.l, u, s.readFile)
 	if err != nil {
 		return nil, err
 	}
 
-	s.l.Debug("parse module", zap.String("uri", uriStr))
+	s.l.Debug("parse module", zap.Any("uri", u))
 
-	if d, ok := s.openedDocs[uriStr]; ok {
+	if d, ok := s.openedDocs[u]; ok {
 		d.module = mod
 		d.parsedModule = true
 	}
@@ -64,24 +63,23 @@ func shortString(s string, n int) string {
 
 func (s *server) readFile(uriStr lsp.DocumentURI) (string, error) {
 	if d, ok := s.openedDocs[uriStr]; ok {
-		s.l.Debug("reading file from docs", zap.String("uri", uriStr), zap.Int("size", len(d.content)), zap.String("hash", shortString(d.contentHash, 7)))
+		s.l.Debug("reading file from docs", zap.Any("uri", uriStr), zap.Int("size", len(d.content)), zap.String("hash", shortString(d.contentHash, 7)))
 		return d.content, nil
 	}
 
-	s.l.Debug("will read file", zap.String("uri", uriStr))
+	s.l.Debug("will read file", zap.Any("uri", uriStr))
 
-	if !strings.HasPrefix(uriStr, fileURIPrefix) {
-		return "", errors.New("not a file uri")
-	}
-	pathStr := strings.TrimPrefix(uriStr, fileURIPrefix)
-
-	b, err := ioutil.ReadFile(pathStr)
+	b, err := ioutil.ReadFile(uriStr.Filename())
 	if err != nil {
 		return "", err
 	}
 	fileStr := string(b)
 
-	s.l.Debug("did read file", zap.String("uri", uriStr))
+	s.l.Debug("did read file", zap.Any("uri", uriStr))
 
 	return fileStr, nil
+}
+
+func (s *server) Request(ctx context.Context, method string, params interface{}) (interface{}, error) {
+	return lspsrv.Request(ctx, s, method, params)
 }

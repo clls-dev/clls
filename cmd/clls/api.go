@@ -1,20 +1,26 @@
 package main
 
 import (
-	"encoding/base64"
+	"context"
 
 	"github.com/clls-dev/clls/pkg/clls"
-	"github.com/clls-dev/clls/pkg/lsp"
 	"github.com/pkg/errors"
+	lsp "go.lsp.dev/protocol"
 	"go.uber.org/zap"
-	"golang.org/x/crypto/sha3"
 )
 
-func (s *server) Initialize(*lsp.InitializeParams) (*lsp.InitializeResult, error) {
+type SemanticTokensOptions struct {
+	lsp.WorkDoneProgressOptions
+	Legend lsp.SemanticTokensLegend `json:"legend"`
+	Range  *lsp.Range               `json:"range,omitempty"`
+	Full   interface{}              `json:"full,omitempty"`
+}
+
+func (s *server) Initialize(context.Context, *lsp.InitializeParams) (*lsp.InitializeResult, error) {
 	caps := lsp.ServerCapabilities{
-		TextDocumentSync: lsp.Full,
-		SemanticTokensProvider: lsp.SemanticTokensOptions{
-			Legend: lsp.StandardSemanticTokensLegend,
+		TextDocumentSync: lsp.TextDocumentSyncKindFull,
+		SemanticTokensProvider: SemanticTokensOptions{
+			Legend: clls.StandardSemanticTokensLegend,
 			Full:   true,
 		},
 		DocumentFormattingProvider: true,
@@ -23,30 +29,15 @@ func (s *server) Initialize(*lsp.InitializeParams) (*lsp.InitializeResult, error
 	}
 	s.l.Debug("server initialized", zap.Any("capabilities", caps))
 	return &lsp.InitializeResult{
-		ServerInfo: &lsp.InitializeResultServerInfo{
+		ServerInfo: &lsp.ServerInfo{
 			Name:    "clls",
 			Version: "0.1.0",
 		},
-		Capabilities: &caps}, nil
+		Capabilities: caps}, nil
 
 }
 
-func hashString(s string) string {
-	h := sha3.New256()
-	if _, err := h.Write([]byte(s)); err != nil {
-		panic(err)
-	}
-	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))
-}
-
-func newDocumentData(text string) *documentData {
-	return &documentData{
-		content:     text,
-		contentHash: hashString(text), // FIXME, if an include changes, the cache will be bad
-	}
-}
-
-func (s *server) DidOpenTextDocument(params *lsp.DidOpenTextDocumentParams) error {
+func (s *server) DidOpen(_ context.Context, params *lsp.DidOpenTextDocumentParams) error {
 	docData := newDocumentData(params.TextDocument.Text)
 	if pulled, ok := s.cache.pull(docData.contentHash); ok {
 		s.openedDocs[params.TextDocument.URI] = pulled
@@ -57,7 +48,7 @@ func (s *server) DidOpenTextDocument(params *lsp.DidOpenTextDocumentParams) erro
 }
 
 // This only supports full file changes
-func (s *server) DidChangeTextDocument(params *lsp.DidChangeTextDocumentParams) error {
+func (s *server) DidChange(_ context.Context, params *lsp.DidChangeTextDocumentParams) error {
 	if len(params.ContentChanges) == 0 {
 		return nil
 	}
@@ -85,7 +76,7 @@ func (s *server) DidChangeTextDocument(params *lsp.DidChangeTextDocumentParams) 
 	return nil
 }
 
-func (s *server) DidCloseTextDocument(params *lsp.DidCloseTextDocumentParams) error {
+func (s *server) DidClose(_ context.Context, params *lsp.DidCloseTextDocumentParams) error {
 	dd, ok := s.openedDocs[params.TextDocument.URI]
 	if !ok {
 		return nil
@@ -95,7 +86,7 @@ func (s *server) DidCloseTextDocument(params *lsp.DidCloseTextDocumentParams) er
 	return nil
 }
 
-func (s *server) Rename(params *lsp.RenameParams) (*lsp.WorkspaceEdit, error) {
+func (s *server) Rename(_ context.Context, params *lsp.RenameParams) (*lsp.WorkspaceEdit, error) {
 	p := params.Position
 	line := int(p.Line)
 	char := int(p.Character)
@@ -128,7 +119,7 @@ func (s *server) Rename(params *lsp.RenameParams) (*lsp.WorkspaceEdit, error) {
 			}
 
 			edit := lsp.WorkspaceEdit{
-				Changes: map[string][]lsp.TextEdit{},
+				Changes: map[lsp.DocumentURI][]lsp.TextEdit{},
 			}
 			for _, t := range s.Tokens() {
 				edit.Changes[t.DocumentURI] = append(edit.Changes[t.DocumentURI], lsp.TextEdit{
@@ -143,7 +134,7 @@ func (s *server) Rename(params *lsp.RenameParams) (*lsp.WorkspaceEdit, error) {
 	return nil, errors.New("symbol not found")
 }
 
-func (s *server) DocumentFormatting(params *lsp.DocumentFormattingParams) ([]lsp.TextEdit, error) {
+func (s *server) Formatting(_ context.Context, params *lsp.DocumentFormattingParams) ([]lsp.TextEdit, error) {
 	uriStr := params.TextDocument.URI
 
 	fileStr, err := s.readFile(uriStr)
@@ -159,13 +150,13 @@ func (s *server) DocumentFormatting(params *lsp.DocumentFormattingParams) ([]lsp
 	return []lsp.TextEdit{{
 		Range: lsp.Range{
 			Start: lsp.Position{Line: 0, Character: 0},
-			End:   lsp.Position{Line: lsp.UInteger(linesCount + 1), Character: 0},
+			End:   lsp.Position{Line: uint32(linesCount + 1), Character: 0},
 		},
 		NewText: newText,
 	}}, nil
 }
 
-func (s *server) SemanticTokens(params *lsp.SemanticTokensParams) (*lsp.SemanticTokens, error) {
+func (s *server) SemanticTokensFull(_ context.Context, params *lsp.SemanticTokensParams) (*lsp.SemanticTokens, error) {
 	if d, ok := s.openedDocs[params.TextDocument.URI]; ok && d.generatedTokens {
 		return &lsp.SemanticTokens{Data: d.semanticTokens}, nil
 	}
@@ -190,25 +181,25 @@ func (s *server) SemanticTokens(params *lsp.SemanticTokensParams) (*lsp.Semantic
 	return &lsp.SemanticTokens{Data: data}, nil
 }
 
-func (s *server) Shutdown() error {
+func (s *server) Shutdown(context.Context) error {
 	s.down = true
 	return nil
 }
 
-func (s *server) Exit() error {
+func (s *server) Exit(context.Context) error {
 	s.exit = true
 	return nil
 }
 
-func (s *server) Initialized(*lsp.InitializedParams) error {
+func (s *server) Initialized(context.Context, *lsp.InitializedParams) error {
 	return nil
 }
 
-func (s *server) DidSaveTextDocument(*lsp.DidSaveTextDocumentParams) error {
+func (s *server) DidSave(context.Context, *lsp.DidSaveTextDocumentParams) error {
 	return nil // this is to gracefully ignore the event
 }
 
-func (s *server) DocumentHighlight(params *lsp.DocumentHighlightParams) ([]lsp.DocumentHighlight, error) {
+func (s *server) DocumentHighlight(_ context.Context, params *lsp.DocumentHighlightParams) ([]lsp.DocumentHighlight, error) {
 	p := params.Position
 	line := int(p.Line)
 	char := int(p.Character)
@@ -244,12 +235,12 @@ func (s *server) DocumentHighlight(params *lsp.DocumentHighlightParams) ([]lsp.D
 				if t.DocumentURI != params.TextDocument.URI {
 					continue
 				}
-				r = append(r, lsp.DocumentHighlight{Range: t.Range(), Kind: &lsp.Text})
+				r = append(r, lsp.DocumentHighlight{Range: t.Range(), Kind: lsp.DocumentHighlightKindText})
 			}
 			s.l.Debug("will send", zap.Any("r", r))
 			return r, nil
 		}
 	}
 
-	return nil, errors.New("symbol not found")
+	return nil, nil
 }

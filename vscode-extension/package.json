@@ -34,7 +34,8 @@
 		],
 		"configurationDefaults": {
 			"[chialisp]": {
-				"editor.semanticHighlighting.enabled": true
+				"editor.semanticHighlighting.enabled": true,
+				"editor.formatOnSave": true
 			}
 		}
 	},

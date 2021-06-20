@@ -8,9 +8,10 @@ import (
 	"io/ioutil"
 
 	"github.com/clls-dev/clls/pkg/examples"
-	"github.com/clls-dev/clls/pkg/lsp"
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"github.com/pkg/errors"
+	lsp "go.lsp.dev/protocol"
+	"go.lsp.dev/uri"
 	"go.uber.org/zap"
 )
 
@@ -18,8 +19,8 @@ var (
 	CommandName = "clls"
 )
 
-func readFileToString(p string) (string, error) {
-	b, err := ioutil.ReadFile(p)
+func readFileToString(u lsp.DocumentURI) (string, error) {
+	b, err := ioutil.ReadFile(u.Filename())
 	if err != nil {
 		return "", err
 	}
@@ -48,14 +49,14 @@ func Command(rootName string) (*ffcli.Command, *string) {
 
 			var mod *Module
 			if *ppFlag != "" {
-				sources := map[string]string{"file://main.clvm": *ppFlag}
+				sources := map[lsp.DocumentURI]string{uri.New("file://main.clvm"): *ppFlag}
 				exs, err := examples.F.ReadDir(".")
 				if err == nil {
 					for _, e := range exs {
 						b, err := examples.F.ReadFile(e.Name())
 						if err == nil {
 							fmt.Println("source", e.Name())
-							sources["file://"+e.Name()] = string(b)
+							sources[uri.From("file", "", e.Name(), "", "")] = string(b)
 						}
 					}
 				}
@@ -72,7 +73,7 @@ func Command(rootName string) (*ffcli.Command, *string) {
 				if filePath == "" {
 					return errors.New("missing file path argument")
 				}
-				nmod, err := LoadCLVM(l, "file://"+filePath, readFileToString)
+				nmod, err := LoadCLVM(l, uri.New("file://"+filePath), readFileToString)
 				if err != nil {
 					return errors.Wrap(err, "parse modules")
 				}
@@ -96,7 +97,7 @@ func Command(rootName string) (*ffcli.Command, *string) {
 const fileURIPrefix = "file://"
 
 // TODO: replace p with documentURI
-func LoadCLVM(l *zap.Logger, documentURI lsp.DocumentURI, readFile func(string) (string, error)) (*Module, error) {
+func LoadCLVM(l *zap.Logger, documentURI lsp.DocumentURI, readFile func(lsp.DocumentURI) (string, error)) (*Module, error) {
 	f, err := readFile(documentURI)
 	if err != nil {
 		return nil, errors.Wrap(err, "read file")

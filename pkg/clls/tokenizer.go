@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"unicode"
 
-	"github.com/clls-dev/clls/pkg/lsp"
 	"github.com/pkg/errors"
+	lsp "go.lsp.dev/protocol"
 )
 
 type Token struct {
@@ -36,8 +36,8 @@ func (t *Token) EndLine() int {
 
 func (t *Token) Range() lsp.Range {
 	return lsp.Range{
-		Start: lsp.Position{Line: lsp.UInteger(t.Line), Character: lsp.UInteger(t.StartChar)},
-		End:   lsp.Position{Line: lsp.UInteger(t.EndLine()), Character: lsp.UInteger(t.EndChar())},
+		Start: lsp.Position{Line: uint32(t.Line), Character: uint32(t.StartChar)},
+		End:   lsp.Position{Line: uint32(t.EndLine()), Character: uint32(t.EndChar())},
 	}
 }
 

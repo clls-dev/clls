@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"math/rand"
 	"path/filepath"
-	"strings"
 
-	"github.com/clls-dev/clls/pkg/lsp"
 	"github.com/pkg/errors"
+	lsp "go.lsp.dev/protocol"
+	"go.lsp.dev/uri"
 	"go.uber.org/zap"
 )
 
@@ -110,7 +110,7 @@ func (m *Module) Symbols(l *zap.Logger) []*Symbol {
 	return result
 }
 
-func parseModules(l *zap.Logger, tree *ASTNode, documentURI lsp.DocumentURI, readFile func(string) (string, error), tokens []*Token) ([]*Module, error) {
+func parseModules(l *zap.Logger, tree *ASTNode, documentURI lsp.DocumentURI, readFile func(lsp.DocumentURI) (string, error), tokens []*Token) ([]*Module, error) {
 	if tree == nil {
 		return nil, errors.New("empty tree")
 	}
@@ -180,9 +180,9 @@ func parseModules(l *zap.Logger, tree *ASTNode, documentURI lsp.DocumentURI, rea
 					if t, ok := mn.Children[1].(*Token); ok {
 						filePath = t.Value
 						var err error
-						dir := filepath.Dir(strings.TrimPrefix(documentURI, "file://"))
-						uri := "file://" + filepath.Join(dir, filePath)
-						if fincl.Module, err = LoadCLVM(l, uri, readFile); err != nil {
+						dir := filepath.Dir(documentURI.Filename())
+						u := "file://" + filepath.Join(dir, filePath)
+						if fincl.Module, err = LoadCLVM(l, uri.New(u), readFile); err != nil {
 							fincl.Module = nil
 							fincl.LoadError = err
 						}

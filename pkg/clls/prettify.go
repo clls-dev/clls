@@ -3,8 +3,8 @@ package clls
 import (
 	"strings"
 
-	"github.com/clls-dev/clls/pkg/lsp"
 	"github.com/pkg/errors"
+	lsp "go.lsp.dev/protocol"
 	"go.uber.org/zap"
 )
 
