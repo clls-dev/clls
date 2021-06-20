@@ -4,7 +4,7 @@ More info at github.com/clls-dev/clls
 
 ## Requirements
 
-This requires the clls progam but if you have go installed it will install the last version automatically on extenstion activation
+This requires the clls progam but if you have go installed it will install the last version automatically on extension activation
 
 ### go
 
