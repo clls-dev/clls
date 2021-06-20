@@ -4,17 +4,14 @@ More info at github.com/clls-dev/clls
 
 ## Requirements
 
-### clls
+This requires the clls progam but if you have go installed it will install the last version automatically on extenstion activation
 
-You need the `clls` program in your `$PATH`
+### go
+
 - Install [go](https://golang.org/)
 - Put the go binaries in your path, for example
   ```shell
   export PATH="${PATH}:`go env GOPATH`/bin"
-  ```
-- Get clls, make sure you are not `cd`ed in a go module
-  ```shell
-  cd && go get -u github.com/clls-dev/clls/cmd/clls
   ```
 
 ## Functionality

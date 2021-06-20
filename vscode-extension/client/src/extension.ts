@@ -39,9 +39,9 @@ export async function activate(context: ExtensionContext) {
 	// Otherwise the run options are used
 
 	try {
-		execSync("cd && go get -u github.com/clls-dev/clls/cmd/clls")
+		execSync("go install github.com/clls-dev/clls/cmd/clls@latest")
 	} catch (e) {
-		console.error("failed to fetch clls:", e)
+		console.error("failed to install clls:", e)
 	}
 
 	const serverOptions: ServerOptions = { command: "clls" };
