@@ -7,6 +7,7 @@ import * as path from 'path';
 import { stderr } from 'process';
 import { workspace, ExtensionContext, languages } from 'vscode';
 import { DocumentSemanticsTokensSignature, SemanticTokensFeature, SemanticTokensMiddleware } from 'vscode-languageclient/lib/common/semanticTokens';
+import { execSync } from "child_process"
 
 import {
 	LanguageClient,
@@ -36,6 +37,13 @@ export async function activate(context: ExtensionContext) {
 
 	// If the extension is launched in debug mode then the debug server options are used
 	// Otherwise the run options are used
+
+	try {
+		execSync("cd && go get -u github.com/clls-dev/clls/cmd/clls")
+	} catch (e) {
+		console.error("failed to fetch clls:", e)
+	}
+
 	const serverOptions: ServerOptions = { command: "clls" };
 	// Options to control the language client
 	const clientOptions: LanguageClientOptions = {
