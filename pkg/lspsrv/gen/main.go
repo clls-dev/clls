@@ -38,6 +38,9 @@ func main() {
 		}
 
 		returnString := strings.Repeat("nil, ", len(outs)-1) + "ErrNotImplemented"
+		if len(outs) == 1 {
+			returnString = "nil"
+		}
 
 		fmt.Printf("\nfunc (*UnimplementedLanguageServer) %s(%s)%s {\n    return %s\n}\n", method.Name, strings.Join(ins, ", "), outString, returnString)
 	}
@@ -69,6 +72,10 @@ func Unmarshal(method string, payloadBytes []byte) (interface{}, error) {
 			var payload %s
 			return &payload, json.Unmarshal(payloadBytes, &payload)
 		`, methodID, paramsTypeString) + "\n"
+		} else {
+			s += fmt.Sprintf(`case "%s":
+				return nil, nil
+			`, methodID) + "\n"
 		}
 	}
 	s += strings.TrimSpace(`

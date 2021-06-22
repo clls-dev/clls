@@ -20,7 +20,7 @@ func (*UnimplementedLanguageServer) CodeLens(context.Context, *lsp.CodeLensParam
 }
 
 func (*UnimplementedLanguageServer) CodeLensRefresh(context.Context) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) CodeLensResolve(context.Context, *lsp.CodeLens) (*lsp.CodeLens, error) {
@@ -48,43 +48,43 @@ func (*UnimplementedLanguageServer) Definition(context.Context, *lsp.DefinitionP
 }
 
 func (*UnimplementedLanguageServer) DidChange(context.Context, *lsp.DidChangeTextDocumentParams) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) DidChangeConfiguration(context.Context, *lsp.DidChangeConfigurationParams) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) DidChangeWatchedFiles(context.Context, *lsp.DidChangeWatchedFilesParams) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) DidChangeWorkspaceFolders(context.Context, *lsp.DidChangeWorkspaceFoldersParams) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) DidClose(context.Context, *lsp.DidCloseTextDocumentParams) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) DidCreateFiles(context.Context, *lsp.CreateFilesParams) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) DidDeleteFiles(context.Context, *lsp.DeleteFilesParams) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) DidOpen(context.Context, *lsp.DidOpenTextDocumentParams) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) DidRenameFiles(context.Context, *lsp.RenameFilesParams) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) DidSave(context.Context, *lsp.DidSaveTextDocumentParams) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) DocumentColor(context.Context, *lsp.DocumentColorParams) ([]lsp.ColorInformation, error) {
@@ -112,7 +112,7 @@ func (*UnimplementedLanguageServer) ExecuteCommand(context.Context, *lsp.Execute
 }
 
 func (*UnimplementedLanguageServer) Exit(context.Context) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) FoldingRanges(context.Context, *lsp.FoldingRangeParams) ([]lsp.FoldingRange, error) {
@@ -140,7 +140,7 @@ func (*UnimplementedLanguageServer) Initialize(context.Context, *lsp.InitializeP
 }
 
 func (*UnimplementedLanguageServer) Initialized(context.Context, *lsp.InitializedParams) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) LinkedEditingRange(context.Context, *lsp.LinkedEditingRangeParams) (*lsp.LinkedEditingRanges, error) {
@@ -148,7 +148,7 @@ func (*UnimplementedLanguageServer) LinkedEditingRange(context.Context, *lsp.Lin
 }
 
 func (*UnimplementedLanguageServer) LogTrace(context.Context, *lsp.LogTraceParams) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) Moniker(context.Context, *lsp.MonikerParams) ([]lsp.Moniker, error) {
@@ -200,11 +200,11 @@ func (*UnimplementedLanguageServer) SemanticTokensRange(context.Context, *lsp.Se
 }
 
 func (*UnimplementedLanguageServer) SemanticTokensRefresh(context.Context) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) SetTrace(context.Context, *lsp.SetTraceParams) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) ShowDocument(context.Context, *lsp.ShowDocumentParams) (*lsp.ShowDocumentResult, error) {
@@ -212,7 +212,7 @@ func (*UnimplementedLanguageServer) ShowDocument(context.Context, *lsp.ShowDocum
 }
 
 func (*UnimplementedLanguageServer) Shutdown(context.Context) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) SignatureHelp(context.Context, *lsp.SignatureHelpParams) (*lsp.SignatureHelp, error) {
@@ -240,7 +240,7 @@ func (*UnimplementedLanguageServer) WillRenameFiles(context.Context, *lsp.Rename
 }
 
 func (*UnimplementedLanguageServer) WillSave(context.Context, *lsp.WillSaveTextDocumentParams) error {
-	return ErrNotImplemented
+	return nil
 }
 
 func (*UnimplementedLanguageServer) WillSaveWaitUntil(context.Context, *lsp.WillSaveTextDocumentParams) ([]lsp.TextEdit, error) {
@@ -248,7 +248,7 @@ func (*UnimplementedLanguageServer) WillSaveWaitUntil(context.Context, *lsp.Will
 }
 
 func (*UnimplementedLanguageServer) WorkDoneProgressCancel(context.Context, *lsp.WorkDoneProgressCancelParams) error {
-	return ErrNotImplemented
+	return nil
 }
 func Unmarshal(method string, payloadBytes []byte) (interface{}, error) {
 	switch method {
@@ -259,6 +259,9 @@ func Unmarshal(method string, payloadBytes []byte) (interface{}, error) {
 	case "textDocument/codeLens":
 		var payload lsp.CodeLensParams
 		return &payload, json.Unmarshal(payloadBytes, &payload)
+
+	case "textDocument/codeLensRefresh":
+		return nil, nil
 
 	case "textDocument/codeLensResolve":
 		var payload lsp.CodeLens
@@ -348,6 +351,9 @@ func Unmarshal(method string, payloadBytes []byte) (interface{}, error) {
 		var payload lsp.ExecuteCommandParams
 		return &payload, json.Unmarshal(payloadBytes, &payload)
 
+	case "exit":
+		return nil, nil
+
 	case "textDocument/foldingRanges":
 		var payload lsp.FoldingRangeParams
 		return &payload, json.Unmarshal(payloadBytes, &payload)
@@ -428,6 +434,9 @@ func Unmarshal(method string, payloadBytes []byte) (interface{}, error) {
 		var payload lsp.SemanticTokensRangeParams
 		return &payload, json.Unmarshal(payloadBytes, &payload)
 
+	case "textDocument/semanticTokensRefresh":
+		return nil, nil
+
 	case "textDocument/setTrace":
 		var payload lsp.SetTraceParams
 		return &payload, json.Unmarshal(payloadBytes, &payload)
@@ -435,6 +444,9 @@ func Unmarshal(method string, payloadBytes []byte) (interface{}, error) {
 	case "textDocument/showDocument":
 		var payload lsp.ShowDocumentParams
 		return &payload, json.Unmarshal(payloadBytes, &payload)
+
+	case "shutdown":
+		return nil, nil
 
 	case "textDocument/signatureHelp":
 		var payload lsp.SignatureHelpParams
