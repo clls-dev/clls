@@ -3,18 +3,14 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import * as path from 'path';
-import { stderr } from 'process';
 import { workspace, ExtensionContext, languages } from 'vscode';
-import { DocumentSemanticsTokensSignature, SemanticTokensFeature, SemanticTokensMiddleware } from 'vscode-languageclient/lib/common/semanticTokens';
+import { DocumentSemanticsTokensSignature, SemanticTokensMiddleware } from 'vscode-languageclient/lib/common/semanticTokens';
 import { execSync } from "child_process"
 
 import {
 	LanguageClient,
 	LanguageClientOptions,
 	ServerOptions,
-	TransportKind,
-	SemanticTokens,
 	SemanticTokenTypes,
 	SemanticTokenModifiers,
 	Middleware,
@@ -51,7 +47,7 @@ export async function activate(context: ExtensionContext) {
 		documentSelector: [{ scheme: 'file', language: 'chialisp' }],
 		synchronize: {
 			// Notify the server about file changes to '.clientrc files contained in the workspace
-			fileEvents: workspace.createFileSystemWatcher('**/.clientrc')
+			fileEvents: workspace.createFileSystemWatcher('**/*.clvm')
 		}
 	};
 
