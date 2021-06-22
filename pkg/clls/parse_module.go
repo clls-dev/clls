@@ -36,6 +36,10 @@ func (s *Symbol) Tokens() []*Token {
 	return append(s.References, s.Token)
 }
 
+func (s *Symbol) DefinitionLocation() lsp.Location {
+	return s.Token.Location()
+}
+
 func makeSymbolsMap(l *zap.Logger, cb *CodeBody) map[*Token][]*Token {
 	m := map[*Token][]*Token{}
 	switch cb.Kind {

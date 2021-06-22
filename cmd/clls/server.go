@@ -6,6 +6,7 @@ import (
 
 	"github.com/clls-dev/clls/pkg/clls"
 	"github.com/clls-dev/clls/pkg/lspsrv"
+	"github.com/pkg/errors"
 	lsp "go.lsp.dev/protocol"
 	"go.uber.org/zap"
 )
@@ -82,4 +83,41 @@ func (s *server) readFile(uriStr lsp.DocumentURI) (string, error) {
 
 func (s *server) Request(ctx context.Context, method string, params interface{}) (interface{}, error) {
 	return lspsrv.Request(ctx, s, method, params)
+}
+
+func (s *server) symbolAt(uri lsp.DocumentURI, p lsp.Position) (*clls.Symbol, error) {
+	line := int(p.Line)
+	char := int(p.Character)
+
+	var syms []*clls.Symbol
+	if d, ok := s.openedDocs[uri]; ok && d.generatedSymbols {
+		syms = d.symbols
+	} else {
+		mod, err := s.loadCLVM(uri)
+		if err != nil {
+			return nil, errors.Wrap(err, "parse module")
+		}
+
+		syms = mod.Symbols(s.l)
+	}
+
+	if d, ok := s.openedDocs[uri]; ok {
+		d.symbols = syms
+		d.generatedSymbols = true
+	}
+
+	for _, sym := range syms {
+		for _, st := range sym.Tokens() {
+			if st.Line != line {
+				continue
+			}
+			if char < st.StartChar || st.EndChar() < char {
+				continue
+			}
+
+			return sym, nil
+		}
+	}
+
+	return nil, nil
 }

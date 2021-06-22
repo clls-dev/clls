@@ -132,6 +132,7 @@ func Unmarshal(method string, payloadBytes []byte) (interface{}, error) {
 
 var specialMethodIDs = map[string]string{
 	"Initialize":         "initialize",
+	"Initialized":        "initialized",
 	"Shutdown":           "shutdown",
 	"Exit":               "exit",
 	"SemanticTokensFull": "textDocument/semanticTokens/full",

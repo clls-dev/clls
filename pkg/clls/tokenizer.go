@@ -20,6 +20,10 @@ type Token struct {
 	DocumentURI lsp.DocumentURI
 }
 
+func (t *Token) Location() lsp.Location {
+	return lsp.Location{URI: t.DocumentURI, Range: t.Range()}
+}
+
 func (t *Token) EndChar() int {
 	if t.Kind == lineReturnToken {
 		return 0

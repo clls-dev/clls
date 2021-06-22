@@ -26,6 +26,8 @@ func (s *server) Initialize(context.Context, *lsp.InitializeParams) (*lsp.Initia
 		DocumentFormattingProvider: true,
 		RenameProvider:             true,
 		DocumentHighlightProvider:  true,
+		ReferencesProvider:         true,
+		DefinitionProvider:         true,
 	}
 	s.l.Debug("server initialized", zap.Any("capabilities", caps))
 	return &lsp.InitializeResult{
@@ -87,51 +89,25 @@ func (s *server) DidClose(_ context.Context, params *lsp.DidCloseTextDocumentPar
 }
 
 func (s *server) Rename(_ context.Context, params *lsp.RenameParams) (*lsp.WorkspaceEdit, error) {
-	p := params.Position
-	line := int(p.Line)
-	char := int(p.Character)
-	newName := params.NewName
-
-	var syms []*clls.Symbol
-	if d, ok := s.openedDocs[params.TextDocument.URI]; ok && d.generatedSymbols {
-		syms = d.symbols
-	} else {
-		mod, err := s.loadCLVM(params.TextDocument.URI)
-		if err != nil {
-			return nil, errors.Wrap(err, "parse module")
-		}
-
-		syms = mod.Symbols(s.l)
+	sym, err := s.symbolAt(params.TextDocument.URI, params.Position)
+	if err != nil {
+		return nil, errors.Wrap(err, "find symbol")
 	}
 
-	if d, ok := s.openedDocs[params.TextDocument.URI]; ok {
-		d.symbols = syms
-		d.generatedSymbols = true
+	if sym == nil {
+		return nil, nil
 	}
 
-	for _, s := range syms {
-		for _, st := range s.Tokens() {
-			if st.Line != line {
-				continue
-			}
-			if char < st.StartChar || st.EndChar() <= char {
-				continue
-			}
-
-			edit := lsp.WorkspaceEdit{
-				Changes: map[lsp.DocumentURI][]lsp.TextEdit{},
-			}
-			for _, t := range s.Tokens() {
-				edit.Changes[t.DocumentURI] = append(edit.Changes[t.DocumentURI], lsp.TextEdit{
-					Range:   t.Range(),
-					NewText: newName,
-				})
-			}
-			return &edit, nil
-		}
+	edit := lsp.WorkspaceEdit{
+		Changes: map[lsp.DocumentURI][]lsp.TextEdit{},
 	}
-
-	return nil, errors.New("symbol not found")
+	for _, t := range sym.Tokens() {
+		edit.Changes[t.DocumentURI] = append(edit.Changes[t.DocumentURI], lsp.TextEdit{
+			Range:   t.Range(),
+			NewText: params.NewName,
+		})
+	}
+	return &edit, nil
 }
 
 func (s *server) Formatting(_ context.Context, params *lsp.DocumentFormattingParams) ([]lsp.TextEdit, error) {
@@ -200,47 +176,54 @@ func (s *server) DidSave(context.Context, *lsp.DidSaveTextDocumentParams) error 
 }
 
 func (s *server) DocumentHighlight(_ context.Context, params *lsp.DocumentHighlightParams) ([]lsp.DocumentHighlight, error) {
-	p := params.Position
-	line := int(p.Line)
-	char := int(p.Character)
+	sym, err := s.symbolAt(params.TextDocument.URI, params.Position)
+	if err != nil {
+		return nil, errors.Wrap(err, "find symbol")
+	}
 
-	var syms []*clls.Symbol
-	if d, ok := s.openedDocs[params.TextDocument.URI]; ok && d.generatedSymbols {
-		syms = d.symbols
-	} else {
-		mod, err := s.loadCLVM(params.TextDocument.URI)
-		if err != nil {
-			return nil, errors.Wrap(err, "parse module")
+	if sym == nil {
+		return nil, nil
+	}
+
+	r := []lsp.DocumentHighlight(nil)
+	for _, t := range sym.Tokens() {
+		if t.DocumentURI != params.TextDocument.URI {
+			continue
 		}
+		r = append(r, lsp.DocumentHighlight{Range: t.Range(), Kind: lsp.DocumentHighlightKindText})
+	}
+	s.l.Debug("will send", zap.Any("r", r))
+	return r, nil
 
-		syms = mod.Symbols(s.l)
+}
+
+func (s *server) References(ctx context.Context, params *lsp.ReferenceParams) ([]lsp.Location, error) {
+	sym, err := s.symbolAt(params.TextDocument.URI, params.Position)
+	if err != nil {
+		return nil, errors.Wrap(err, "find symbol")
 	}
 
-	if d, ok := s.openedDocs[params.TextDocument.URI]; ok {
-		d.symbols = syms
-		d.generatedSymbols = true
+	if sym == nil {
+		return nil, nil
 	}
 
-	for _, sym := range syms {
-		for _, st := range sym.Tokens() {
-			if st.Line != line {
-				continue
-			}
-			if char < st.StartChar || st.EndChar() < char {
-				continue
-			}
+	r := []lsp.Location(nil)
+	for _, t := range sym.Tokens() {
+		r = append(r, t.Location())
+	}
+	s.l.Debug("will send", zap.Any("r", r))
+	return r, nil
+}
 
-			r := []lsp.DocumentHighlight(nil)
-			for _, t := range sym.Tokens() {
-				if t.DocumentURI != params.TextDocument.URI {
-					continue
-				}
-				r = append(r, lsp.DocumentHighlight{Range: t.Range(), Kind: lsp.DocumentHighlightKindText})
-			}
-			s.l.Debug("will send", zap.Any("r", r))
-			return r, nil
-		}
+func (s *server) Definition(ctx context.Context, params *lsp.DefinitionParams) ([]lsp.Location, error) {
+	sym, err := s.symbolAt(params.TextDocument.URI, params.Position)
+	if err != nil {
+		return nil, errors.Wrap(err, "find symbol")
 	}
 
-	return nil, nil
+	if sym == nil {
+		return nil, nil
+	}
+
+	return []lsp.Location{sym.DefinitionLocation()}, nil
 }

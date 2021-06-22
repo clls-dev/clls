@@ -372,7 +372,7 @@ func Unmarshal(method string, payloadBytes []byte) (interface{}, error) {
 		var payload lsp.InitializeParams
 		return &payload, json.Unmarshal(payloadBytes, &payload)
 
-	case "textDocument/initialized":
+	case "initialized":
 		var payload lsp.InitializedParams
 		return &payload, json.Unmarshal(payloadBytes, &payload)
 
@@ -694,7 +694,7 @@ func Request(ctx context.Context, s lsp.Server, method string, payload interface
 		}
 		return s.Initialize(ctx, castedPayload)
 
-	case "textDocument/initialized":
+	case "initialized":
 		castedPayload, ok := payload.(*lsp.InitializedParams)
 		if !ok {
 			return nil, ErrBadPayloadType
